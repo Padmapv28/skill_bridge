@@ -16,6 +16,11 @@ from pymongo.database import Database
 
 from app.utils.helpers import is_valid_object_id, serialize_doc, to_object_id
 
+from app.services.ml.role_predictor import predict_roles as llm_predict_roles
+from app.services.ml.skill_gap_analyzer import analyze_skill_gap
+import json
+from pathlib import Path
+
 # Configurable role -> required skills mapping. Edit this dictionary to
 # add roles or adjust required skills without touching any other code.
 ROLE_SKILL_MAP: Dict[str, List[str]] = {
@@ -89,27 +94,25 @@ def _resolve_skills(
 def predict_roles(
     db: Database, user_id: str, resume_id: Optional[str], skills: Optional[List[str]]
 ) -> dict:
-    """Score every configured role against the user's skills and persist the result."""
+    """Use Ollama + Llama 3.2 to predict the top 5 career roles."""
+
     user_skills = _resolve_skills(db, user_id, resume_id, skills)
-    user_skills_lower = {s.lower() for s in user_skills}
 
-    scored_roles = []
-    for role, required_skills in ROLE_SKILL_MAP.items():
-        matching = [s for s in required_skills if s.lower() in user_skills_lower]
-        missing = [s for s in required_skills if s.lower() not in user_skills_lower]
-        score = round(len(matching) / len(required_skills), 2) if required_skills else 0.0
-        scored_roles.append(
-            {"role": role, "score": score, "matching_skills": matching, "missing_skills": missing}
-        )
+    resume_json = {
+        "skills": user_skills,
+        "education": [],
+        "experience": [],
+        "projects": [],
+    }
 
-    scored_roles.sort(key=lambda r: r["score"], reverse=True)
-    top_predictions = scored_roles[:5]
+    prediction = llm_predict_roles(resume_json)
 
     doc = {
         "user_id": ObjectId(user_id),
         "resume_id": resume_id,
-        "predictions": top_predictions,
+        "predictions": prediction["predictions"],
     }
+
     result = db.predictions.insert_one(doc)
     saved = db.predictions.find_one({"_id": result.inserted_id})
     return serialize_doc(saved)
@@ -118,25 +121,30 @@ def predict_roles(
 def calculate_skill_gap(
     db: Database, user_id: str, role: str, resume_id: Optional[str], skills: Optional[List[str]]
 ) -> dict:
-    """Compute matching/missing skills and gap percentage for a specific role."""
-    if role not in ROLE_SKILL_MAP:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Unknown role '{role}'")
+    """Use sentence-transformers semantic matching for skill-gap analysis."""
 
     user_skills = _resolve_skills(db, user_id, resume_id, skills)
-    user_skills_lower = {s.lower() for s in user_skills}
-    required_skills = ROLE_SKILL_MAP[role]
 
-    matching = [s for s in required_skills if s.lower() in user_skills_lower]
-    missing = [s for s in required_skills if s.lower() not in user_skills_lower]
-    gap_percentage = round((len(missing) / len(required_skills)) * 100, 2) if required_skills else 0.0
+    dataset_path = Path(__file__).parent / "ml" / "data" / "role_skills_mapping.json"
+
+    with open(dataset_path, "r", encoding="utf-8") as f:
+        role_map = json.load(f)
+
+    if role not in role_map:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Unknown role '{role}'",
+        )
+
+    result = analyze_skill_gap(user_skills, role_map[role])
 
     return {
         "role": role,
         "current_skills": user_skills,
-        "required_skills": required_skills,
-        "matching_skills": matching,
-        "missing_skills": missing,
-        "skill_gap_percentage": gap_percentage,
+        "required_skills": role_map[role],
+        "matching_skills": result["matched_skills"],
+        "missing_skills": result["missing_skills"],
+        "skill_gap_percentage": round(100 - result["match_percentage"], 2),
     }
 
 

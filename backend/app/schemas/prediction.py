@@ -10,9 +10,8 @@ class PredictionRequest(BaseModel):
 
 class RolePrediction(BaseModel):
     role: str
-    score: float
-    matching_skills: List[str]
-    missing_skills: List[str]
+    fit_score: int
+    justification: str
 
 
 class PredictionResponse(BaseModel):

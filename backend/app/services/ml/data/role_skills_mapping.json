@@ -1,0 +1,284 @@
+{
+  "Data Analyst": [
+    "Python",
+    "SQL",
+    "Excel",
+    "Statistics",
+    "Power BI",
+    "Tableau",
+    "Data Visualization",
+    "Data Cleaning"
+  ],
+  "Data Scientist": [
+    "Python",
+    "SQL",
+    "Machine Learning",
+    "Statistics",
+    "Pandas",
+    "NumPy",
+    "Scikit-learn",
+    "Data Visualization",
+    "Deep Learning"
+  ],
+  "Machine Learning Engineer": [
+    "Python",
+    "Machine Learning",
+    "Deep Learning",
+    "TensorFlow",
+    "PyTorch",
+    "Scikit-learn",
+    "Model Deployment",
+    "SQL",
+    "Docker"
+  ],
+  "AI Engineer": [
+    "Python",
+    "Machine Learning",
+    "Deep Learning",
+    "TensorFlow",
+    "PyTorch",
+    "NLP",
+    "LLM",
+    "Prompt Engineering",
+    "Docker",
+    "API Development"
+  ],
+  "Backend Developer": [
+    "Python",
+    "Java",
+    "SQL",
+    "REST API",
+    "Git",
+    "Docker",
+    "Node.js",
+    "Database Design",
+    "System Design"
+  ],
+  "Frontend Developer": [
+    "JavaScript",
+    "HTML",
+    "CSS",
+    "React",
+    "TypeScript",
+    "Git",
+    "Responsive Design",
+    "REST API"
+  ],
+  "Full Stack Developer": [
+    "JavaScript",
+    "Python",
+    "React",
+    "Node.js",
+    "SQL",
+    "REST API",
+    "Git",
+    "HTML",
+    "CSS",
+    "Docker"
+  ],
+  "Software Engineer": [
+    "Python",
+    "Java",
+    "Data Structures",
+    "Algorithms",
+    "Git",
+    "System Design",
+    "SQL",
+    "REST API",
+    "Object Oriented Programming"
+  ],
+  "Python Developer": [
+    "Python",
+    "Django",
+    "Flask",
+    "SQL",
+    "REST API",
+    "Git",
+    "Object Oriented Programming",
+    "Unit Testing"
+  ],
+  "Java Developer": [
+    "Java",
+    "Spring Boot",
+    "SQL",
+    "REST API",
+    "Git",
+    "Object Oriented Programming",
+    "Microservices",
+    "Unit Testing"
+  ],
+  "Data Engineer": [
+    "Python",
+    "SQL",
+    "ETL",
+    "Apache Spark",
+    "Airflow",
+    "Data Warehousing",
+    "Cloud Computing",
+    "Docker",
+    "Kafka"
+  ],
+  "DevOps Engineer": [
+    "Linux",
+    "Docker",
+    "Kubernetes",
+    "CI/CD",
+    "AWS",
+    "Terraform",
+    "Git",
+    "Shell Scripting",
+    "Monitoring"
+  ],
+  "Cloud Engineer": [
+    "AWS",
+    "Azure",
+    "Google Cloud Platform",
+    "Terraform",
+    "Docker",
+    "Kubernetes",
+    "Networking",
+    "Linux",
+    "CI/CD"
+  ],
+  "MLOps Engineer": [
+    "Python",
+    "Docker",
+    "Kubernetes",
+    "CI/CD",
+    "Machine Learning",
+    "Model Deployment",
+    "MLflow",
+    "Cloud Computing",
+    "Monitoring"
+  ],
+  "NLP Engineer": [
+    "Python",
+    "NLP",
+    "Machine Learning",
+    "Deep Learning",
+    "Transformers",
+    "SpaCy",
+    "NLTK",
+    "PyTorch",
+    "LLM"
+  ],
+  "Computer Vision Engineer": [
+    "Python",
+    "OpenCV",
+    "Deep Learning",
+    "PyTorch",
+    "TensorFlow",
+    "Image Processing",
+    "Machine Learning",
+    "CNN"
+  ],
+  "Cybersecurity Analyst": [
+    "Network Security",
+    "Linux",
+    "Python",
+    "Penetration Testing",
+    "SIEM",
+    "Risk Assessment",
+    "Firewalls",
+    "Incident Response"
+  ],
+  "QA Engineer": [
+    "Manual Testing",
+    "Test Case Design",
+    "SQL",
+    "Bug Tracking",
+    "Regression Testing",
+    "Agile",
+    "API Testing"
+  ],
+  "Automation Test Engineer": [
+    "Selenium",
+    "Python",
+    "Java",
+    "Test Automation",
+    "CI/CD",
+    "API Testing",
+    "Git",
+    "TestNG"
+  ],
+  "Business Analyst": [
+    "Requirements Gathering",
+    "SQL",
+    "Excel",
+    "Data Analysis",
+    "Stakeholder Management",
+    "Business Process Modeling",
+    "Power BI",
+    "Agile"
+  ],
+  "Product Manager": [
+    "Product Strategy",
+    "Roadmapping",
+    "Stakeholder Management",
+    "Agile",
+    "Market Research",
+    "Data Analysis",
+    "User Research",
+    "SQL"
+  ],
+  "Database Administrator": [
+    "SQL",
+    "Database Design",
+    "Database Optimization",
+    "Backup and Recovery",
+    "MySQL",
+    "PostgreSQL",
+    "Database Security",
+    "Linux"
+  ],
+  "Solutions Architect": [
+    "System Design",
+    "Cloud Computing",
+    "AWS",
+    "Microservices",
+    "API Design",
+    "Networking",
+    "Security",
+    "Scalability"
+  ],
+  "Mobile App Developer": [
+    "Java",
+    "Kotlin",
+    "Swift",
+    "React Native",
+    "Flutter",
+    "REST API",
+    "Git",
+    "Mobile UI Design"
+  ],
+  "UI/UX Designer": [
+    "Figma",
+    "Wireframing",
+    "User Research",
+    "Prototyping",
+    "Adobe XD",
+    "Design Systems",
+    "Usability Testing",
+    "Visual Design"
+  ],
+  "Data Science Fellow": [
+    "Python",
+    "SQL",
+    "Machine Learning",
+    "Statistics",
+    "Data Visualization",
+    "Pandas",
+    "NumPy",
+    "EDA"
+  ],
+  "AI Research Engineer": [
+    "Python",
+    "Deep Learning",
+    "PyTorch",
+    "Research Methodology",
+    "LLM",
+    "Mathematics",
+    "Machine Learning",
+    "Academic Writing"
+  ]
+}
