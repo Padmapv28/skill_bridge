@@ -1,8 +1,12 @@
 \# Resume Parsing \& Extraction — ML Module
 
 
+<<<<<<< HEAD
 
 Backend service that turns an uploaded resume (PDF or DOCX) into clean,
+=======
+\## Repository Structure
+>>>>>>> f5d6e6c92df02537577577e39acc26b9e19104b6
 
 structured JSON: name, contact info, skills, education, experience,
 
@@ -101,7 +105,6 @@ ml/
 │ └── build\_taxonomy.py # generates skills\_taxonomy.json
 
 ├── data/
-
 │ ├── skills\_taxonomy.json # 524-skill matching taxonomy
 
 │ └── sample\_resumes/ # 26 sample resumes for testing
@@ -111,6 +114,7 @@ ml/
 └── resume\_fields.md # output JSON schema (contract for other modules)
 
 
+<<<<<<< HEAD
 
 \---
 
@@ -221,7 +225,19 @@ Full response schema: \[`docs/resume\_fields.md`](docs/resume\_fields.md).
 
 
 \## 6. Setup \& running
+=======
+\## ml/ -- Resume Parsing Module
 
+
+
+Takes an uploaded resume (PDF or DOCX) and returns structured JSON: name, email,
+phone, skills, education, experience, projects, and certifications.
+
+
+
+>>>>>>> f5d6e6c92df02537577577e39acc26b9e19104b6
+
+\### Setup
 
 
 ```bash
@@ -234,6 +250,18 @@ python -m spacy download en\_core\_web\_sm
 
 
 
+<<<<<<< HEAD
+=======
+
+
+\### Running the API
+
+
+```bash
+
+cd ml/src
+
+>>>>>>> f5d6e6c92df02537577577e39acc26b9e19104b6
 python -m uvicorn main:app --reload
 
 ```
@@ -244,8 +272,12 @@ Interactive API docs: `http://127.0.0.1:8000/docs`
 
 
 
+<<<<<<< HEAD
 \### Using the modules directly (without the API)
+=======
+>>>>>>> f5d6e6c92df02537577577e39acc26b9e19104b6
 
+\### Using the modules directly
 
 
 ```python
@@ -264,8 +296,12 @@ result = parse\_resume(raw\_text)
 
 
 
+<<<<<<< HEAD
 \## 7. Testing
+=======
+>>>>>>> f5d6e6c92df02537577577e39acc26b9e19104b6
 
+\### Output schema
 
 
 All 26 files in `data/sample\_resumes/` were used to validate the pipeline —
@@ -276,7 +312,60 @@ table-layout, and two-column formats, plus two deliberate edge cases (one
 
 corrupted file, one scanned/image-only PDF) to confirm error handling.
 
+<<<<<<< HEAD
 Both success and failure paths were verified through the live API, not just
 
 the standalone modules.
+=======
+
+\### API responses
+
+
+| Status | Meaning |
+
+|---|---|
+
+| 200 | Success -- structured resume JSON returned |
+
+| 400 | Bad request -- wrong file type, empty file, or file over 5MB |
+
+| 422 | File was valid but could not be extracted/parsed (e.g. corrupted file, scanned/image-only PDF) |
+
+
+
+
+\### Known limitations
+
+
+
+\- Two-column PDF layouts: pdfplumber's default text extraction can scramble
+
+&#x20; reading order on true two-column PDF resumes (columns get interleaved
+
+&#x20; line-by-line). Single-column PDFs, DOCX files, and table-layout DOCX files
+
+&#x20; all extract correctly. A layout-aware extraction pass (e.g. using bounding
+
+&#x20; boxes) would be needed to fully resolve this.
+
+\- Rule-based parsing (education/experience/projects) is tuned against a range
+
+&#x20; of real resume formats but, like any rule-based system, may not perfectly
+
+&#x20; handle every possible resume layout.
+
+
+
+
+\### Testing
+
+
+All 26 sample resumes in ml/data/sample\_resumes/ were used to validate the
+
+extraction and parsing pipeline, including two deliberate edge cases (one
+
+corrupted file, one scanned/image-only PDF) to confirm error handling works
+
+correctly end-to-end, including through the live API.
+>>>>>>> f5d6e6c92df02537577577e39acc26b9e19104b6
 
