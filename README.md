@@ -29,6 +29,8 @@ skill\_bridge/
 
 \## ml/ -- Resume Parsing Module
 
+
+
 Takes an uploaded resume (PDF or DOCX) and returns structured JSON: name, email,
 phone, skills, education, experience, projects, and certifications.
 
@@ -36,6 +38,7 @@ phone, skills, education, experience, projects, and certifications.
 
 
 \### Setup
+
 
 ```bash
 
@@ -51,6 +54,7 @@ python -m spacy download en\_core\_web\_sm
 
 
 \### Running the API
+
 
 ```bash
 
@@ -73,6 +77,7 @@ under the `file` field.
 
 \### Using the modules directly
 
+
 ```python
 
 from resume\_extractor import extract\_text
@@ -92,6 +97,7 @@ result = parse\_resume(raw\_text)  # returns a dict matching docs/resume\_fields
 
 \### Output schema
 
+
 See ml/docs/resume\_fields.md for the full JSON schema returned by both
 
 parse\_resume() and the API endpoint.
@@ -100,6 +106,7 @@ parse\_resume() and the API endpoint.
 
 
 \### API responses
+
 
 | Status | Meaning |
 
@@ -115,6 +122,8 @@ parse\_resume() and the API endpoint.
 
 
 \### Known limitations
+
+
 
 \- Two-column PDF layouts: pdfplumber's default text extraction can scramble
 
@@ -136,6 +145,7 @@ parse\_resume() and the API endpoint.
 
 
 \### Testing
+
 
 All 26 sample resumes in ml/data/sample\_resumes/ were used to validate the
 
