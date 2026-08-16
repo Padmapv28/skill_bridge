@@ -34,6 +34,7 @@ phone, skills, education, experience, projects, and certifications.
 
 
 
+
 \### Setup
 
 ```bash
@@ -45,6 +46,7 @@ pip install pdfplumber PyMuPDF python-docx spacy rapidfuzz fastapi uvicorn pytho
 python -m spacy download en\_core\_web\_sm
 
 ```
+
 
 
 
@@ -68,6 +70,7 @@ under the `file` field.
 
 
 
+
 \### Using the modules directly
 
 ```python
@@ -86,11 +89,13 @@ result = parse\_resume(raw\_text)  # returns a dict matching docs/resume\_fields
 
 
 
+
 \### Output schema
 
 See ml/docs/resume\_fields.md for the full JSON schema returned by both
 
 parse\_resume() and the API endpoint.
+
 
 
 
@@ -105,6 +110,7 @@ parse\_resume() and the API endpoint.
 | 400 | Bad request -- wrong file type, empty file, or file over 5MB |
 
 | 422 | File was valid but could not be extracted/parsed (e.g. corrupted file, scanned/image-only PDF) |
+
 
 
 
@@ -125,6 +131,7 @@ parse\_resume() and the API endpoint.
 &#x20; of real resume formats but, like any rule-based system, may not perfectly
 
 &#x20; handle every possible resume layout.
+
 
 
 
