@@ -4,16 +4,26 @@
 \## Repository Structure
 
 skill\_bridge/
+
 ├── frontend/ # Frontend application (in progress)
+
 └── ml/ # Resume parsing \& data extraction pipeline (Member A)
+
 ├── src/
+
 │ ├── resume\_extractor.py # PDF/DOCX -> raw text
+
 │ ├── resume\_parser.py # Raw text -> structured JSON
+
 │ └── main.py # FastAPI endpoint (POST /api/upload-resume)
+
 ├── data/
 │ ├── skills\_taxonomy.json # 524-skill matching taxonomy
+
 │ └── sample\_resumes/ # 26 sample resumes (PDF/DOCX, varied formats)
+
 └── docs/
+
 └── resume\_fields.md # JSON output schema (contract for other modules)
 
 
