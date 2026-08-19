@@ -1,4 +1,9 @@
 ﻿__pycache__/
 *.pyc
+<<<<<<< HEAD
 backend/app/services/test_resume.json
 member_b_work/
+=======
+
+backend/.env
+>>>>>>> d9ab9ec (Add backend skeleton: FastAPI structure, Mongo models, CORS, health check)
