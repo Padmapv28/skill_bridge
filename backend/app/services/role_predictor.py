@@ -1,7 +1,7 @@
 import json
 import os
 import re
-from ollama_client import generate
+from .ollama_client import generate
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 RESUME_PATH = os.path.join(BASE_DIR, "test_resume.json")
