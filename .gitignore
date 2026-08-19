@@ -1,2 +1,4 @@
 ﻿__pycache__/
 *.pyc
+backend/app/services/test_resume.json
+member_b_work/
