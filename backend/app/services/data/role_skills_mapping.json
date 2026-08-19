@@ -1,0 +1,90 @@
+{
+  "Data Scientist": {
+    "required_skills": [
+      "Python",
+      "SQL",
+      "Machine Learning",
+      "Statistics",
+      "Pandas",
+      "NumPy",
+      "Data Visualization"
+    ]
+  },
+  "Machine Learning Engineer": {
+    "required_skills": [
+      "Python",
+      "Machine Learning",
+      "Deep Learning",
+      "Scikit-learn",
+      "TensorFlow",
+      "PyTorch",
+      "Git"
+    ]
+  },
+  "Data Analyst": {
+    "required_skills": [
+      "Python",
+      "SQL",
+      "Excel",
+      "Statistics",
+      "Power BI",
+      "Tableau",
+      "Data Visualization"
+    ]
+  },
+  "Backend Developer": {
+    "required_skills": [
+      "Python",
+      "FastAPI",
+      "REST API",
+      "MongoDB",
+      "SQL",
+      "Git",
+      "Docker"
+    ]
+  },
+  "AI Engineer": {
+    "required_skills": [
+      "Python",
+      "Machine Learning",
+      "Deep Learning",
+      "Artificial Intelligence",
+      "FastAPI",
+      "Git",
+      "Docker"
+    ]
+  },
+  "NLP Engineer": {
+    "required_skills": [
+      "Python",
+      "Natural Language Processing",
+      "Machine Learning",
+      "Deep Learning",
+      "Transformers",
+      "PyTorch",
+      "Git"
+    ]
+  },
+  "MLOps Engineer": {
+    "required_skills": [
+      "Python",
+      "Machine Learning",
+      "Docker",
+      "Kubernetes",
+      "Git",
+      "CI/CD",
+      "Cloud"
+    ]
+  },
+  "Full Stack Developer": {
+    "required_skills": [
+      "Python",
+      "FastAPI",
+      "JavaScript",
+      "HTML",
+      "CSS",
+      "SQL",
+      "Git"
+    ]
+  }
+}
