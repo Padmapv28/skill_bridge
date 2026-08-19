@@ -1,7 +1,7 @@
 import json
 import os
 import re
-from ollama_client import generate
+from .ollama_client import generate
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
