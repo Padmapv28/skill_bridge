@@ -47,14 +47,6 @@ flowchart LR
 | Resume Parsing | pdfplumber, PyMuPDF, pytesseract (OCR), spaCy (NER), rapidfuzz |
 | Testing | Manual + Swagger UI (interactive API testing) |
 
-## Project Structure
-
-| Folder | Owner | Purpose |
-|---|---|---|
-| `ml/` | Member A | Resume parsing & data extraction - PDF/DOCX to structured JSON |
-| `backend/` | Member B & C | FastAPI app: auth, resume storage, role prediction, skill gap, roadmap generation |
-| `frontend/` | Member D | React UI |
-| `docs/` | All | Technical methodology documentation |
 
 ## Setup Instructions
 
