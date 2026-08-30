@@ -1,27 +1,40 @@
 import requests
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
+
+OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 MODEL = "llama3.2:3b"
 
-def generate(prompt):
-    try:
-        response = requests.post(
-            OLLAMA_URL,
-            json={
-                "model": MODEL,
-                "prompt": prompt,
-                "stream": False
-            },
-            timeout=120
+
+def generate(prompt: str) -> str:
+    """
+    Send a prompt to Ollama and return the generated text.
+    """
+
+    payload = {
+        "model": MODEL,
+        "prompt": prompt,
+        "stream": False,
+        "format": "json",
+        "options": {
+            "temperature": 0.1,
+            "top_p": 0.9,
+            "num_predict": 600
+        }
+    }
+
+    response = requests.post(
+        OLLAMA_URL,
+        json=payload,
+        timeout=180
+    )
+
+    response.raise_for_status()
+
+    data = response.json()
+
+    if "response" not in data:
+        raise RuntimeError(
+            f"Unexpected Ollama response: {data}"
         )
 
-        response.raise_for_status()
-        return response.json()["response"]
-
-    except requests.exceptions.RequestException as e:
-        return f"Error: {e}"
-
-if __name__ == "__main__":
-    print("Testing Ollama connection...\n")
-    result = generate("Say Hello from Ollama in one short sentence.")
-    print(result)
+    return str(data["response"])

@@ -7,3 +7,7 @@ passlib[bcrypt]
 python-jose[cryptography]
 pytest
 httpx
+pdfplumber
+python-docx
+spacy
+rapidfuzz

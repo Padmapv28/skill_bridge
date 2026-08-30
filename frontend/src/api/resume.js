@@ -1,52 +1,87 @@
 import apiClient from './client';
 
 /**
- * Resume Analysis & Prediction API Service
- */
-
-/**
- * Upload resume file (.pdf, .docx)
- * @param {File} file - Resume file
- * @returns {Promise<{ success: boolean, resumeId: string, parsedData: Object }>}
+ * Upload a real PDF/DOCX resume.
+ *
+ * Backend expects:
+ *     resume: UploadFile
  */
 export const uploadResume = async (file) => {
+  if (!file) {
+    throw new Error('No resume file selected.');
+  }
+
   const formData = new FormData();
+
+  // FastAPI upload parameter
   formData.append('resume', file);
 
-  const response = await apiClient.post('/api/upload-resume', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  });
+  const response = await apiClient.post(
+    '/api/upload-resume',
+    formData,
+    {
+      // Let Axios/browser set multipart boundary automatically.
+      timeout: 120000,
+    }
+  );
+
   return response.data;
 };
 
 /**
- * Predict top matching career roles based on parsed resume data
- * @param {Object} resumeData - Parsed resume content
- * @returns {Promise<{ success: boolean, roles: Array }>}
+ * Predict matching career roles from the CURRENT uploaded resume.
+ *
+ * Backend endpoint:
+ *     POST /api/career/predict-roles
+ *
+ * Backend expects:
+ *     {
+ *       "resume": {...}
+ *     }
+ *
+ * Backend returns:
+ *     {
+ *       "predictions": [...]
+ *     }
  */
 export const predictRole = async (resumeData) => {
-  const response = await apiClient.post('/api/predict-role', { resumeData });
+  if (!resumeData) {
+    throw new Error('Resume data is missing.');
+  }
+
+  const response = await apiClient.post(
+    '/api/career/predict-roles',
+    {
+      resume: resumeData,
+    },
+    {
+      timeout: 180000,
+    }
+  );
+
   return response.data;
 };
 
 /**
- * Get skill gap analysis for a selected role against user's skills
- * @param {Object} payload - { role: Object, userSkills: Array, roleId?: string }
- * @returns {Promise<{ success: boolean, skillGap: Object }>}
+ * Get skill-gap analysis.
  */
 export const getSkillGap = async (payload) => {
-  const response = await apiClient.post('/api/skill-gap', payload);
+  const response = await apiClient.post(
+    '/api/skill-gap',
+    payload
+  );
+
   return response.data;
 };
 
 /**
- * Generate personalized interactive learning roadmap
- * @param {Object} payload - { role: Object, missingSkills: Array, partialSkills: Array }
- * @returns {Promise<{ success: boolean, roadmap: Object }>}
+ * Generate personalized career roadmap.
  */
 export const generateRoadmap = async (payload) => {
-  const response = await apiClient.post('/api/generate-roadmap', payload);
+  const response = await apiClient.post(
+    '/api/generate-roadmap',
+    payload
+  );
+
   return response.data;
 };

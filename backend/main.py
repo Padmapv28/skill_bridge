@@ -13,7 +13,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routes import health, career
+from app.routes import health, career, resume_upload
+
+
 app = FastAPI(
     title="SkillBridge Backend API",
     description="Auth, resume storage, and orchestration for the SkillBridge platform.",
@@ -28,10 +30,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(health.router, prefix="/api", tags=["health"])
-app.include_router(career.router, prefix="/api/career", tags=["career"])
+# Health
+app.include_router(
+    health.router,
+    prefix="/api",
+    tags=["health"]
+)
+
+# Career prediction, skill gap and roadmap
+app.include_router(
+    career.router,
+    prefix="/api/career",
+    tags=["career"]
+)
+
+# Member A resume upload + parsing
+app.include_router(
+    resume_upload.router,
+    prefix="/api",
+    tags=["resume"]
+)
 
 
 @app.get("/")
 def root():
-    return {"status": "ok", "message": "SkillBridge Backend API is running"}
+    return {
+        "status": "ok",
+        "message": "SkillBridge Backend API is running"
+    }

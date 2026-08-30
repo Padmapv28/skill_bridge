@@ -1,0 +1,24 @@
+{
+  "name": "Padma",
+  "skills": [
+    "Python",
+    "SQL",
+    "Machine Learning",
+    "FastAPI",
+    "Git"
+  ],
+  "education": [
+    {
+      "degree": "BE Artificial Intelligence and Data Science",
+      "institution": "SJCIT",
+      "year": "2027"
+    }
+  ],
+  "experience": [],
+  "projects": [
+    {
+      "title": "AI Career Role Predictor",
+      "technologies": ["Python", "FastAPI", "MongoDB"]
+    }
+  ]
+}
