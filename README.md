@@ -15,6 +15,18 @@ An AI-powered resume analysis platform: upload a resume, get predicted career ro
 ## Architecture
 
 ```mermaid
+flowchart LR
+    A[Resume Upload<br/>PDF / DOCX] --> B[Resume Parser<br/>ml/src]
+    B --> C[Structured JSON<br/>skills, education, experience]
+    C --> D[Backend Orchestration<br/>FastAPI]
+    D --> E[MongoDB<br/>Users / Resumes / Predictions / Roadmaps]
+    D --> F[Ollama LLM<br/>llama3.2, local]
+    F --> G[Role Prediction]
+    F --> H[Skill Gap Analysis]
+    F --> I[Roadmap Generation]
+    G --> J[React Frontend]
+    H --> J
+    I --> J
 ```
 
 **Flow summary:**
