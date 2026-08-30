@@ -1,6 +1,6 @@
 # ML Module — Resume Parsing & Data Extraction
 
-Owned by **Member A**. Converts uploaded resumes (PDF/DOCX) into structured, validated JSON for downstream use by the backend (Member B) and frontend/matching (Member C).
+Owned by **Member A**. Converts uploaded resumes (PDF/DOCX) into structured, validated JSON for downstream use by the backend and frontend/matching.
 
 ## Architecture
 
