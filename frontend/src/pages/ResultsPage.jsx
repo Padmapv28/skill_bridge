@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 
@@ -32,6 +32,8 @@ export const ResultsPage = () => {
 
   const [error, setError] = useState('');
 
+  const predictionStartedRef = useRef(false);
+
   /*
    * REAL AI ROLE PREDICTION
    *
@@ -46,13 +48,26 @@ export const ResultsPage = () => {
    * {
    *   "predictions": [...]
    * }
+   *
+   * NOTE: predictionStartedRef already guarantees this only runs once
+   * per resume, even under React Strict Mode's mount/unmount/remount
+   * cycle in dev. We intentionally do NOT use a `cancelled` closure
+   * flag here — combining both guards caused the real API response to
+   * get discarded (setRoles/setIsLoading were skipped because the
+   * Strict Mode cleanup had already flipped `cancelled` to true),
+   * which left the UI stuck on the loading spinner forever even
+   * though the console showed a successful, fully-formatted response.
    */
   useEffect(() => {
     if (!resumeData) {
       return;
     }
+    if (predictionStartedRef.current) {
+      console.log('[Results] Prediction already started. Skipping duplicate call.');
+      return;
+    }
 
-    let cancelled = false;
+    predictionStartedRef.current = true;
 
     const predictRoles = async () => {
       setIsLoading(true);
@@ -113,9 +128,7 @@ export const ResultsPage = () => {
           })
         );
 
-        if (!cancelled) {
-          setRoles(formattedRoles);
-        }
+        setRoles(formattedRoles);
 
         console.log(
           '[Results] Formatted roles:',
@@ -127,25 +140,17 @@ export const ResultsPage = () => {
           err
         );
 
-        if (!cancelled) {
-          setError(
-            err?.response?.data?.detail ||
-              err?.message ||
-              'Unable to generate AI career predictions.'
-          );
-        }
+        setError(
+          err?.response?.data?.detail ||
+            err?.message ||
+            'Unable to generate AI career predictions.'
+        );
       } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
+        setIsLoading(false);
       }
     };
 
     predictRoles();
-
-    return () => {
-      cancelled = true;
-    };
   }, [resumeData]);
 
   /*

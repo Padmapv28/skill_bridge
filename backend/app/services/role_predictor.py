@@ -1,4 +1,3 @@
-
 import json
 import re
 
@@ -6,9 +5,7 @@ from .ollama_client import generate
 
 
 def normalize_text(value):
-    """
-    Normalize text for safe comparison.
-    """
+    """Normalize text for safe skill comparison."""
     if value is None:
         return ""
 
@@ -50,125 +47,111 @@ def extract_candidate_skills(resume):
 
     for skill in skills:
         if isinstance(skill, dict):
-            value = (
+            skill = (
                 skill.get("name")
                 or skill.get("skill")
                 or skill.get("title")
             )
 
-            if value:
-                skill = value
+        if not skill:
+            continue
 
-        if skill:
-            skill_text = str(skill).strip()
-            normalized = normalize_text(skill_text)
+        skill_text = str(skill).strip()
+        normalized = normalize_text(skill_text)
 
-            if normalized and normalized not in seen:
-                seen.add(normalized)
-                cleaned.append(skill_text)
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            cleaned.append(skill_text)
 
     return cleaned
 
 
-def compact_value(value, max_chars=2500):
+def compact_list(value, limit=5, chars=500):
     """
-    Keep large resume sections small enough for the local 3B model.
+    Keep resume information small enough for the local model.
     """
 
-    if value is None:
-        return ""
+    if not value:
+        return []
 
     if isinstance(value, str):
-        return value[:max_chars]
+        return [value[:chars]]
 
-    if isinstance(value, list):
-        result = []
+    if not isinstance(value, list):
+        return [str(value)[:chars]]
 
-        for item in value[:8]:
-            if isinstance(item, dict):
-                text = json.dumps(
-                    item,
-                    ensure_ascii=False
-                )
-            else:
-                text = str(item)
+    result = []
 
-            result.append(text[:700])
+    for item in value[:limit]:
+        if isinstance(item, dict):
+            text = json.dumps(
+                item,
+                ensure_ascii=False
+            )
+        else:
+            text = str(item)
 
-        return result
+        result.append(text[:chars])
 
-    if isinstance(value, dict):
-        return {
-            str(k): str(v)[:700]
-            for k, v in list(value.items())[:12]
-        }
-
-    return str(value)[:max_chars]
+    return result
 
 
 def build_current_resume(resume):
     """
-    Build a compact representation of ONLY the current resume.
+    Build a compact representation of ONLY the current uploaded resume.
 
-    No previous candidate and no hardcoded resume is used.
+    No previous resume.
+    No test resume.
+    No hardcoded candidate.
     """
 
-    candidate_skills = extract_candidate_skills(resume)
+    skills = extract_candidate_skills(resume)
 
-    current_resume = {
+    return {
         "name": (
             resume.get("candidateName")
             or resume.get("name")
             or "Candidate"
         ),
 
-        "headline": compact_value(
-            resume.get("headline", ""),
-            1000
-        ),
-
-        "summary": compact_value(
+        "summary": str(
             resume.get("summary")
             or resume.get("professionalSummary")
-            or resume.get("executiveSummary")
-            or "",
-            2500
-        ),
+            or resume.get("headline")
+            or ""
+        )[:1200],
 
-        "skills": candidate_skills,
+        "skills": skills[:30],
 
-        "education": compact_value(
+        "education": compact_list(
             resume.get("education", []),
-            2500
+            limit=4,
+            chars=500
         ),
 
-        "experience": compact_value(
+        "experience": compact_list(
             resume.get("experience", []),
-            3500
+            limit=5,
+            chars=600
         ),
 
-        "projects": compact_value(
+        "projects": compact_list(
             resume.get("projects", []),
-            3500
+            limit=5,
+            chars=600
         ),
 
-        "certifications": compact_value(
+        "certifications": compact_list(
             resume.get("certifications", []),
-            2500
+            limit=5,
+            chars=400
         )
     }
-
-    return current_resume
 
 
 def clean_model_response(response):
     """
-    Convert Ollama's response into a clean JSON string.
-
-    Handles:
-    - normal JSON string
-    - markdown JSON fences
-    - surrounding text
+    Convert Ollama output into a Python dictionary.
     """
 
     if isinstance(response, dict):
@@ -182,7 +165,7 @@ def clean_model_response(response):
     if not text:
         raise ValueError("Ollama returned an empty response.")
 
-    # Remove markdown fences.
+    # Remove markdown code fences if Ollama adds them.
     text = re.sub(
         r"^```(?:json)?\s*",
         "",
@@ -196,13 +179,13 @@ def clean_model_response(response):
         text
     ).strip()
 
-    # First try the complete response.
+    # Try complete JSON first.
     try:
         return json.loads(text)
     except json.JSONDecodeError:
         pass
 
-    # Then find the JSON object.
+    # Try extracting the JSON object.
     start = text.find("{")
     end = text.rfind("}")
 
@@ -217,19 +200,20 @@ def clean_model_response(response):
             ) from error
 
     raise ValueError(
-        f"Ollama returned invalid JSON: {text[:2000]}"
+        f"Ollama returned invalid JSON: {text[:1000]}"
     )
 
 
 def validate_predictions(result, candidate_skills):
     """
-    Validate and clean the AI-generated predictions.
+    Validate AI-generated predictions.
 
     IMPORTANT:
-    This validation does NOT choose roles.
-    Ollama chooses the roles.
+    This function does NOT select career roles.
+    Ollama selects the roles, freely, based on the resume.
 
-    We only verify the structure and prevent invented key skills.
+    It only validates the response and prevents
+    invented key skills.
     """
 
     if not isinstance(result, dict):
@@ -255,6 +239,7 @@ def validate_predictions(result, candidate_skills):
     ]
 
     cleaned = []
+    seen_roles = set()
 
     for item in predictions[:5]:
 
@@ -267,6 +252,13 @@ def validate_predictions(result, candidate_skills):
 
         if not role:
             continue
+
+        role_key = normalize_text(role)
+
+        if role_key in seen_roles:
+            continue
+
+        seen_roles.add(role_key)
 
         try:
             fit_score = int(
@@ -305,32 +297,28 @@ def validate_predictions(result, candidate_skills):
                 skill_text
             )
 
-            for candidate in candidate_normalized:
+            for index, candidate in enumerate(
+                candidate_normalized
+            ):
 
                 if (
                     skill_normalized == candidate
                     or skill_normalized in candidate
                     or candidate in skill_normalized
                 ):
-                    original_skill = None
+                    original_skill = candidate_skills[index]
 
-                    for original in candidate_skills:
-                        if normalize_text(original) == candidate:
-                            original_skill = original
-                            break
-
-                    if original_skill:
-                        if original_skill not in valid_skills:
-                            valid_skills.append(
-                                original_skill
-                            )
+                    if original_skill not in valid_skills:
+                        valid_skills.append(
+                            original_skill
+                        )
 
                     break
 
         cleaned.append({
             "role": role,
             "fit_score": fit_score,
-            "justification": justification,
+            "justification": justification[:300],
             "key_skills": valid_skills[:3]
         })
 
@@ -339,8 +327,7 @@ def validate_predictions(result, candidate_skills):
             "Ollama returned fewer than 5 valid career predictions."
         )
 
-    # Sort ONLY after AI has generated the roles.
-    # This does not determine which roles are selected.
+    # Sort the roles selected by AI by fit score.
     cleaned.sort(
         key=lambda item: item["fit_score"],
         reverse=True
@@ -355,14 +342,20 @@ def predict_roles(resume: dict) -> dict:
     """
     REAL-TIME AI CAREER PREDICTION.
 
-    The CURRENT uploaded resume is sent directly to Ollama.
+    The CURRENT uploaded resume is analyzed by Ollama.
 
     There is:
     - no hardcoded candidate
     - no fixed role list
-    - no keyword-based role selection
-    - no rule-based role ranking
     - no previous resume
+    - no rule-based role selection
+
+    Roles are open-ended so this works for ANY resume domain
+    (tech, civil engineering, finance, etc.), not just the 8
+    roles covered by role_skills_mapping.json. The skill-gap
+    step (skill_gap_analyzer.py) handles roles outside that
+    mapping with an AI-generated fallback instead of requiring
+    every predicted role to already exist in the JSON file.
     """
 
     if not resume:
@@ -370,7 +363,7 @@ def predict_roles(resume: dict) -> dict:
             "Resume data is empty."
         )
 
-    # Build ONLY from the current uploaded resume.
+    # Build a small representation of the current resume.
     current_resume = build_current_resume(resume)
 
     candidate_skills = extract_candidate_skills(resume)
@@ -381,140 +374,50 @@ def predict_roles(resume: dict) -> dict:
         )
 
     # IMPORTANT:
-    # There is intentionally NO role_skills_mapping.json here.
-    #
-    # Ollama is responsible for discovering the career roles
-    # from the candidate's actual profile.
+    # Ollama independently discovers the career roles.
     prompt = f"""
-You are a real-time AI career recommendation engine.
+You are an AI career recommendation system.
 
-Analyze ONLY the CURRENT candidate resume below.
+Analyze ONLY this CURRENT candidate resume:
 
-CURRENT CANDIDATE RESUME:
-{json.dumps(current_resume, ensure_ascii=False, indent=2)}
+{json.dumps(current_resume, ensure_ascii=False)}
 
-Your job is to independently understand this candidate.
+Select exactly FIVE career roles that best match this candidate.
 
-Consider:
-- technical skills
-- programming languages
-- frameworks
-- databases
-- cloud technologies
-- AI/ML technologies
-- networking
-- cybersecurity
-- SAP or enterprise technologies
+Use:
+- skills
 - education
-- work experience
-- internships
+- experience
 - projects
 - certifications
-- professional summary
-- career direction
+- summary
 
-IMPORTANT:
-
-Do NOT use a predefined role list.
-
-Do NOT assume the candidate is a:
-- Data Scientist
-- Machine Learning Engineer
-- AI Engineer
-- Backend Developer
-- NLP Engineer
-- MLOps Engineer
-- Software Engineer
-or any other fixed role.
-
-Those are only examples.
-
-You must DISCOVER the most suitable career roles from the CURRENT candidate's profile.
-
-Different resumes must produce different career recommendations.
-
-For example:
-- A strong SAP/ERP resume should produce SAP/enterprise-oriented roles when appropriate.
-- A cybersecurity resume should produce cybersecurity-oriented roles when appropriate.
-- A networking resume should produce networking/cloud/network-security roles when appropriate.
-- A frontend resume should produce frontend/UI-oriented roles when appropriate.
-- An AI/ML resume should produce AI/ML-oriented roles when appropriate.
-- A data analytics resume should produce analytics/data-oriented roles when appropriate.
-
-Do not force a role category that is not supported by the candidate.
-
-Return exactly FIVE career roles.
-
-Rank them from highest fit to lowest fit.
-
-Fit score:
-- integer
-- 0 to 100
-- based on the complete candidate profile
-- NOT simply keyword counting
-
-key_skills:
-- maximum 3
-- must be skills actually present in the CURRENT resume
-- never invent skills
-
-justification:
-- one short sentence
-- specifically explain why THIS candidate fits the role
+Rules:
+1. Do not use a predefined role list.
+2. Do not assume a fixed career.
+3. Discover roles from THIS resume.
+4. Different resumes should produce different roles.
+5. Do not invent candidate skills.
+6. Rank from highest fit to lowest fit.
+7. fit_score must be an integer from 0 to 100.
+8. key_skills must contain only skills actually present in the resume.
+9. Maximum 3 key_skills per role.
+10. Keep justification under 12 words.
 
 Return ONLY valid JSON.
 
-Use exactly this structure:
+Format (repeat this object 5 times inside the "predictions" array, ranked highest fit_score first):
 
 {{
   "predictions": [
     {{
-      "role": "Best Career Role",
+      "role": "Career Role",
       "fit_score": 95,
-      "justification": "Specific reason based on this candidate.",
-      "key_skills": ["Skill 1", "Skill 2"]
-    }},
-    {{
-      "role": "Second Career Role",
-      "fit_score": 90,
-      "justification": "Specific reason based on this candidate.",
-      "key_skills": ["Skill 1", "Skill 2"]
-    }},
-    {{
-      "role": "Third Career Role",
-      "fit_score": 85,
-      "justification": "Specific reason based on this candidate.",
-      "key_skills": ["Skill 1", "Skill 2"]
-    }},
-    {{
-      "role": "Fourth Career Role",
-      "fit_score": 80,
-      "justification": "Specific reason based on this candidate.",
-      "key_skills": ["Skill 1", "Skill 2"]
-    }},
-    {{
-      "role": "Fifth Career Role",
-      "fit_score": 75,
-      "justification": "Specific reason based on this candidate.",
+      "justification": "Strong Python and ML background matches this role directly.",
       "key_skills": ["Skill 1", "Skill 2"]
     }}
   ]
 }}
-
-FINAL RULES:
-
-- Exactly 5 predictions.
-- Every role must be independently selected from the CURRENT resume.
-- Do not use a fixed role list.
-- Do not use previous candidates.
-- Do not use hardcoded predictions.
-- Do not invent candidate skills.
-- Do not return markdown.
-- Do not return ``` symbols.
-- Do not return explanations outside JSON.
-- Complete every quotation mark.
-- Complete every bracket.
-- Finish the JSON before stopping.
 """
 
     print(
@@ -549,6 +452,18 @@ if __name__ == "__main__":
             "Python",
             "Machine Learning",
             "TensorFlow"
+        ],
+        "education": [
+            "B.Tech Computer Science"
+        ],
+        "experience": [
+            "Machine Learning Intern"
+        ],
+        "projects": [
+            "ML prediction project"
+        ],
+        "certifications": [
+            "Python Certificate"
         ]
     }
 

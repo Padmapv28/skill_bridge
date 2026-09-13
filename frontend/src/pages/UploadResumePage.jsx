@@ -121,9 +121,13 @@ export const UploadResumePage = () => {
       }
 
       // IMPORTANT:
-      // Only use the data returned by the backend.
-      // NEVER use Alex Chen / sampleParsedResume here.
+      // Use ONLY the actual backend parsed resume.
       setParsedData(response.parsedData);
+
+      console.log(
+        '[Resume Upload] Parsed resume:',
+        response.parsedData
+      );
 
       toastSuccess('Your resume was parsed successfully.');
     } catch (error) {
@@ -170,14 +174,12 @@ export const UploadResumePage = () => {
   const handleDragOver = (event) => {
     event.preventDefault();
     event.stopPropagation();
-
     setIsDragging(true);
   };
 
   const handleDragLeave = (event) => {
     event.preventDefault();
     event.stopPropagation();
-
     setIsDragging(false);
   };
 
@@ -246,6 +248,10 @@ export const UploadResumePage = () => {
     ? parsedData.education
     : [];
 
+  const certifications = Array.isArray(parsedData?.certifications)
+    ? parsedData.certifications
+    : [];
+
   const categorizedSkills =
     parsedData?.categorizedSkills &&
     typeof parsedData.categorizedSkills === 'object'
@@ -253,19 +259,30 @@ export const UploadResumePage = () => {
       : null;
 
   // ---------------------------------------------------------
+  // CANDIDATE NAME
+  // ---------------------------------------------------------
+
+  const candidateName =
+    parsedData?.name ||
+    parsedData?.candidateName ||
+    'Candidate';
+
+  const candidateInitial =
+    String(candidateName).charAt(0).toUpperCase();
+
+  // ---------------------------------------------------------
   // RENDER
   // ---------------------------------------------------------
 
   return (
     <PageWrapper className="py-10 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto">
-      {/* =====================================================
-          HEADER
-      ====================================================== */}
+
+      {/* HEADER */}
 
       <div className="text-center max-w-2xl mx-auto mb-8 space-y-2">
+
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-blue/10 border border-brand-blue/30 text-brand-blue-light text-xs font-mono">
           <FileCheck className="w-3.5 h-3.5" />
-
           <span>Step 1 of 4 • Resume Parsing</span>
         </div>
 
@@ -275,19 +292,14 @@ export const UploadResumePage = () => {
 
         <p className="text-slate-400 text-sm sm:text-base">
           Our AI parser extracts verified skills, experience
-          timelines, and architectural proficiencies.
+          timelines, and professional qualifications.
         </p>
-      </div>
 
-      {/* =====================================================
-          MAIN CONTENT
-      ====================================================== */}
+      </div>
 
       <div className="space-y-8">
 
-        {/* ===================================================
-            UPLOAD AREA
-        ==================================================== */}
+        {/* UPLOAD AREA */}
 
         {!parsedData && !isUploading && (
           <div className="space-y-4">
@@ -315,6 +327,7 @@ export const UploadResumePage = () => {
               }}
               aria-label="Upload Resume File Zone"
             >
+
               <input
                 ref={fileInputRef}
                 type="file"
@@ -325,6 +338,7 @@ export const UploadResumePage = () => {
               />
 
               <div className="flex flex-col items-center justify-center space-y-4">
+
                 <div className="w-16 h-16 rounded-2xl bg-navy-800 border border-navy-700 flex items-center justify-center text-brand-blue-light shadow-md">
                   <Upload
                     className="w-8 h-8 animate-bounce"
@@ -333,6 +347,7 @@ export const UploadResumePage = () => {
                 </div>
 
                 <div className="space-y-1">
+
                   <p className="font-heading font-bold text-lg text-slate-100">
                     Drag and drop your resume here, or{' '}
                     <span className="text-brand-blue-light underline underline-offset-4">
@@ -351,17 +366,12 @@ export const UploadResumePage = () => {
                     </span>{' '}
                     up to 5MB
                   </p>
+
                 </div>
 
-                <div className="flex items-center gap-4 text-[11px] text-slate-500 font-mono pt-2">
-                  <span>● Client-Validated</span>
-                  <span>● Confidential</span>
-                  <span>● Zero Reselling</span>
-                </div>
               </div>
-            </div>
 
-            {/* ERROR */}
+            </div>
 
             {uploadError && (
               <motion.div
@@ -370,19 +380,18 @@ export const UploadResumePage = () => {
                 className="p-3.5 rounded-xl bg-status-danger/10 border border-status-danger/30 text-status-danger text-xs flex items-center gap-2"
               >
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
-
                 <span>{uploadError}</span>
               </motion.div>
             )}
+
           </div>
         )}
 
-        {/* ===================================================
-            SCANNER
-        ==================================================== */}
+        {/* SCANNER */}
 
         {isUploading && (
           <div className="space-y-4">
+
             <LiveResumeScannerOverlay onComplete={() => {}} />
 
             {file && (
@@ -393,12 +402,11 @@ export const UploadResumePage = () => {
                 </span>
               </div>
             )}
+
           </div>
         )}
 
-        {/* ===================================================
-            PARSED RESUME
-        ==================================================== */}
+        {/* PARSED RESUME */}
 
         {parsedData && !isUploading && (
           <motion.div
@@ -406,35 +414,38 @@ export const UploadResumePage = () => {
             animate={{ opacity: 1, scale: 1 }}
             className="glass-card rounded-3xl p-6 sm:p-8 border border-navy-700/80 shadow-card-dark space-y-6"
           >
+
             {/* TOP BAR */}
 
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-navy-800">
+
               <div className="flex items-start gap-3.5">
+
                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-brand-blue to-cyan-500 flex items-center justify-center text-white font-bold text-lg shadow-glow-blue flex-shrink-0">
-                  {parsedData?.candidateName
-                    ? String(
-                        parsedData.candidateName
-                      ).charAt(0).toUpperCase()
-                    : 'R'}
+                  {candidateInitial}
                 </div>
 
                 <div>
+
                   <div className="flex items-center gap-2">
+
                     <h2 className="font-heading text-xl font-bold text-white">
-                      {parsedData?.candidateName ||
-                        'Candidate Profile'}
+                      {candidateName}
                     </h2>
 
                     <span className="px-2 py-0.5 rounded-full bg-status-success/20 border border-status-success/40 text-status-success text-[10px] font-mono">
                       Parsed & Verified
                     </span>
+
                   </div>
 
+                  {/* Do not show a fake/default profession */}
                   <p className="text-xs text-brand-blue-light font-medium mt-0.5">
-                    {parsedData?.headline ||
-                      'Software Engineer'}
+                    {parsedData?.email || 'Resume successfully parsed'}
                   </p>
+
                 </div>
+
               </div>
 
               <button
@@ -444,54 +455,55 @@ export const UploadResumePage = () => {
                 title="Upload a different resume"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-
                 Upload Different File
               </button>
+
             </div>
 
             {/* SUMMARY */}
 
             {parsedData?.summary && (
               <div className="p-4 rounded-2xl bg-navy-950/70 border border-navy-800/80">
+
                 <h3 className="text-xs font-mono font-semibold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-2">
                   <FileText className="w-3.5 h-3.5 text-brand-blue-light" />
-
                   Executive Summary
                 </h3>
 
                 <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-sans">
                   {String(parsedData.summary)}
                 </p>
+
               </div>
             )}
 
             {/* SKILLS */}
 
             <div>
+
               <div className="flex items-center justify-between mb-3">
+
                 <h3 className="text-xs font-mono font-semibold uppercase tracking-wider text-slate-300 flex items-center gap-2">
                   <Layers className="w-3.5 h-3.5 text-brand-blue-light" />
-
                   Detected Skills ({skills.length})
                 </h3>
 
                 <span className="text-[11px] text-slate-400 font-mono">
                   ATS Score:{' '}
                   <strong className="text-status-success">
-                    {parsedData?.metrics?.atsCompatibilityScore ??
-                      0}
-                    %
+                    {parsedData?.metrics?.atsCompatibilityScore ?? 0}%
                   </strong>
                 </span>
+
               </div>
 
               {categorizedSkills ? (
                 <div className="space-y-3">
+
                   {Object.entries(categorizedSkills).map(
                     ([category, skillsList]) => {
-                      const safeSkills = Array.isArray(
-                        skillsList
-                      )
+
+                      const safeSkills = Array.isArray(skillsList)
                         ? skillsList
                         : [];
 
@@ -500,16 +512,18 @@ export const UploadResumePage = () => {
                           key={category}
                           className="space-y-1.5"
                         >
+
                           <span className="text-[11px] font-medium text-slate-400 capitalize">
                             {category.replace('_', ' / ')}:
                           </span>
 
                           <div className="flex flex-wrap gap-1.5">
+
                             {safeSkills.map(
                               (skill, index) => (
                                 <span
                                   key={`${category}-${index}`}
-                                  className="px-2.5 py-1 rounded-lg bg-navy-850 border border-navy-750 text-slate-200 text-xs font-mono hover:border-brand-blue/40 transition-colors"
+                                  className="px-2.5 py-1 rounded-lg bg-navy-850 border border-navy-750 text-slate-200 text-xs font-mono"
                                 >
                                   {typeof skill === 'string'
                                     ? skill
@@ -517,14 +531,18 @@ export const UploadResumePage = () => {
                                 </span>
                               )
                             )}
+
                           </div>
+
                         </div>
                       );
                     }
                   )}
+
                 </div>
               ) : (
                 <div className="flex flex-wrap gap-1.5">
+
                   {skills.map((skill, index) => (
                     <span
                       key={index}
@@ -535,8 +553,10 @@ export const UploadResumePage = () => {
                         : JSON.stringify(skill)}
                     </span>
                   ))}
+
                 </div>
               )}
+
             </div>
 
             {/* EXPERIENCE + EDUCATION */}
@@ -546,65 +566,80 @@ export const UploadResumePage = () => {
               {/* EXPERIENCE */}
 
               <div className="p-4 rounded-2xl bg-navy-950/70 border border-navy-800/80 space-y-2.5">
+
                 <h3 className="text-xs font-mono font-semibold uppercase tracking-wider text-slate-300 flex items-center gap-2">
                   <Briefcase className="w-3.5 h-3.5 text-cyan-400" />
-
                   Experience Highlights
                 </h3>
 
                 {experience.length > 0 ? (
                   experience.map((exp, index) => (
+
                     <div
                       key={index}
                       className="text-xs space-y-1 pb-2 border-b border-navy-900 last:border-0"
                     >
+
                       <p className="font-semibold text-slate-200">
-                        {exp?.role || 'Role'}
+                        {exp?.title || exp?.role || 'Role'}
                       </p>
 
                       <p className="text-slate-400">
+
                         {exp?.company || 'Company'}
 
-                        {exp?.period && (
+                        {(exp?.duration || exp?.period) && (
                           <>
                             {' • '}
                             <span className="font-mono text-slate-500">
-                              {exp.period}
+                              {exp?.duration || exp?.period}
                             </span>
                           </>
                         )}
+
                       </p>
+
+                      {exp?.description && (
+                        <p className="text-[11px] text-slate-500 leading-relaxed">
+                          {exp.description}
+                        </p>
+                      )}
+
                     </div>
+
                   ))
                 ) : (
                   <p className="text-xs text-slate-500">
                     No experience details detected.
                   </p>
                 )}
+
               </div>
 
               {/* EDUCATION */}
 
               <div className="p-4 rounded-2xl bg-navy-950/70 border border-navy-800/80 space-y-2.5">
+
                 <h3 className="text-xs font-mono font-semibold uppercase tracking-wider text-slate-300 flex items-center gap-2">
                   <GraduationCap className="w-3.5 h-3.5 text-brand-gold" />
-
                   Education & Credentials
                 </h3>
 
                 {education.length > 0 ? (
                   education.map((edu, index) => (
+
                     <div
                       key={index}
                       className="text-xs space-y-1"
                     >
+
                       <p className="font-semibold text-slate-200">
                         {edu?.degree || 'Degree'}
                       </p>
 
                       <p className="text-slate-400">
-                        {edu?.institution ||
-                          'Institution'}
+
+                        {edu?.institution || 'Institution'}
 
                         {edu?.year && (
                           <>
@@ -614,6 +649,7 @@ export const UploadResumePage = () => {
                             </span>
                           </>
                         )}
+
                       </p>
 
                       {edu?.details && (
@@ -621,19 +657,24 @@ export const UploadResumePage = () => {
                           {edu.details}
                         </p>
                       )}
+
                     </div>
+
                   ))
                 ) : (
                   <p className="text-xs text-slate-500">
                     No education details detected.
                   </p>
                 )}
+
               </div>
+
             </div>
 
             {/* PROCEED */}
 
             <div className="pt-4 border-t border-navy-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+
               <div className="text-xs text-slate-400 flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400" />
 
@@ -647,14 +688,22 @@ export const UploadResumePage = () => {
                 onClick={handleProceedToPrediction}
                 className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-brand-blue hover:bg-brand-blue-hover text-white font-semibold text-sm shadow-glow-blue flex items-center justify-center gap-2.5 transition-all group focus-visible:ring-2"
               >
-                <span>Predict Matching Roles</span>
+
+                <span>
+                  Predict Matching Roles
+                </span>
 
                 <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+
               </button>
+
             </div>
+
           </motion.div>
         )}
+
       </div>
+
     </PageWrapper>
   );
 };

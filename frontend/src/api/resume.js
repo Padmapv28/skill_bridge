@@ -2,9 +2,6 @@ import apiClient from './client';
 
 /**
  * Upload a real PDF/DOCX resume.
- *
- * Backend expects:
- *     resume: UploadFile
  */
 export const uploadResume = async (file) => {
   if (!file) {
@@ -12,15 +9,12 @@ export const uploadResume = async (file) => {
   }
 
   const formData = new FormData();
-
-  // FastAPI upload parameter
   formData.append('resume', file);
 
   const response = await apiClient.post(
     '/api/upload-resume',
     formData,
     {
-      // Let Axios/browser set multipart boundary automatically.
       timeout: 120000,
     }
   );
@@ -28,21 +22,9 @@ export const uploadResume = async (file) => {
   return response.data;
 };
 
+
 /**
- * Predict matching career roles from the CURRENT uploaded resume.
- *
- * Backend endpoint:
- *     POST /api/career/predict-roles
- *
- * Backend expects:
- *     {
- *       "resume": {...}
- *     }
- *
- * Backend returns:
- *     {
- *       "predictions": [...]
- *     }
+ * Predict career roles from the CURRENT resume.
  */
 export const predictRole = async (resumeData) => {
   if (!resumeData) {
@@ -62,25 +44,96 @@ export const predictRole = async (resumeData) => {
   return response.data;
 };
 
+
 /**
- * Get skill-gap analysis.
+ * AI Skill Gap Analysis.
  */
-export const getSkillGap = async (payload) => {
+export const getSkillGap = async ({
+  role,
+  resume,
+}) => {
+  if (!resume) {
+    throw new Error('Current resume data is missing.');
+  }
+
+  if (!role) {
+    throw new Error('Target career role is missing.');
+  }
+
   const response = await apiClient.post(
-    '/api/skill-gap',
-    payload
+    '/api/career/skill-gap',
+    {
+      resume,
+      role,
+    },
+    {
+      timeout: 180000,
+    }
   );
 
   return response.data;
 };
 
+
 /**
- * Generate personalized career roadmap.
+ * AI Career Roadmap.
  */
-export const generateRoadmap = async (payload) => {
+export const generateRoadmap = async ({
+  role,
+  resume,
+  missingSkills = [],
+  partialSkills = [],
+}) => {
+  if (!resume) {
+    throw new Error('Current resume data is missing.');
+  }
+
+  if (!role) {
+    throw new Error('Target career role is missing.');
+  }
+
   const response = await apiClient.post(
-    '/api/generate-roadmap',
-    payload
+    '/api/career/roadmap',
+    {
+      resume,
+      role,
+      missingSkills,
+      partialSkills,
+    },
+    {
+      timeout: 180000,
+    }
+  );
+
+  return response.data;
+};
+
+
+/**
+ * Direct Learning Suggestions.
+ *
+ * Uses the missing and partial skills already identified
+ * by Skill Gap. This avoids running the skill-gap AI analysis again.
+ */
+export const getCourseSuggestions = async ({
+  role,
+  missingSkills = [],
+  partialSkills = [],
+}) => {
+  if (!role) {
+    throw new Error('Target career role is missing.');
+  }
+
+  const response = await apiClient.post(
+    '/api/career/course-suggestions',
+    {
+      role,
+      missingSkills,
+      partialSkills,
+    },
+    {
+      timeout: 120000,
+    }
   );
 
   return response.data;

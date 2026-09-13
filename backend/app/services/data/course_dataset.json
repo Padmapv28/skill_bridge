@@ -1,0 +1,85 @@
+[
+  {"title": "Python for Everybody Specialization", "platform": "Coursera", "url": "https://www.coursera.org/specializations/python", "skills_covered": ["Python", "Programming Fundamentals"], "level": "Beginner", "type": "certification"},
+  {"title": "Python 3 Programming Specialization", "platform": "Coursera", "url": "https://www.coursera.org/specializations/python-3-programming", "skills_covered": ["Python", "Advanced Python"], "level": "Advanced", "type": "certification"},
+  {"title": "Learn Python - Full Course for Beginners", "platform": "freeCodeCamp (YouTube)", "url": "https://www.youtube.com/watch?v=rfscVS0vtbw", "skills_covered": ["Python"], "level": "Beginner", "type": "free"},
+  {"title": "Advanced Python Tutorials", "platform": "Corey Schafer (YouTube)", "url": "https://www.youtube.com/playlist?list=PL-osiE80TeTt2d9bfVyTiXJA-UTHn6WwU", "skills_covered": ["Python", "Advanced Python"], "level": "Advanced", "type": "free"},
+
+  {"title": "Machine Learning Specialization", "platform": "Coursera (DeepLearning.AI)", "url": "https://www.coursera.org/specializations/machine-learning-introduction", "skills_covered": ["Machine Learning", "Regression", "Classification"], "level": "Beginner", "type": "certification"},
+  {"title": "Deep Learning Specialization", "platform": "Coursera (DeepLearning.AI)", "url": "https://www.coursera.org/specializations/deep-learning", "skills_covered": ["Machine Learning", "Deep Learning", "Neural Networks"], "level": "Advanced", "type": "certification"},
+  {"title": "Machine Learning with Python - Full Course", "platform": "freeCodeCamp (YouTube)", "url": "https://www.youtube.com/watch?v=7eh4d6sabA0", "skills_covered": ["Machine Learning"], "level": "Beginner", "type": "free"},
+  {"title": "Advanced Machine Learning Playlist", "platform": "StatQuest (YouTube)", "url": "https://www.youtube.com/c/joshstarmer/playlists", "skills_covered": ["Machine Learning", "Deep Learning"], "level": "Advanced", "type": "free"},
+
+  {"title": "TensorFlow Developer Certificate Program", "platform": "Coursera", "url": "https://www.coursera.org/professional-certificates/tensorflow-in-practice", "skills_covered": ["TensorFlow", "Deep Learning"], "level": "Beginner", "type": "certification"},
+  {"title": "TensorFlow Advanced Techniques Specialization", "platform": "Coursera", "url": "https://www.coursera.org/specializations/tensorflow-advanced-techniques", "skills_covered": ["TensorFlow", "Deep Learning"], "level": "Advanced", "type": "certification"},
+  {"title": "TensorFlow 2.0 Complete Course", "platform": "freeCodeCamp (YouTube)", "url": "https://www.youtube.com/watch?v=tPYj3fFJGjk", "skills_covered": ["TensorFlow"], "level": "Beginner", "type": "free"},
+
+  {"title": "SQL for Data Science", "platform": "Coursera", "url": "https://www.coursera.org/learn/sql-for-data-science", "skills_covered": ["SQL", "Database"], "level": "Beginner", "type": "certification"},
+  {"title": "Advanced SQL for Data Scientists", "platform": "Coursera", "url": "https://www.coursera.org/learn/advanced-sql-analytics-postgresql", "skills_covered": ["SQL", "Advanced SQL"], "level": "Advanced", "type": "certification"},
+  {"title": "SQL Tutorial - Full Course for Beginners", "platform": "freeCodeCamp (YouTube)", "url": "https://www.youtube.com/watch?v=HXV3zeQKqGY", "skills_covered": ["SQL"], "level": "Beginner", "type": "free"},
+
+  {"title": "Google Data Analytics Professional Certificate", "platform": "Coursera", "url": "https://www.coursera.org/professional-certificates/google-data-analytics", "skills_covered": ["Data Analysis", "Excel", "SQL", "Tableau"], "level": "Beginner", "type": "certification"},
+  {"title": "Data Analysis with Pandas - Full Course", "platform": "freeCodeCamp (YouTube)", "url": "https://www.youtube.com/watch?v=r-uOLxNrNk8", "skills_covered": ["Pandas", "Data Analysis", "Python"], "level": "Beginner", "type": "free"},
+
+  {"title": "The Complete JavaScript Course", "platform": "Udemy", "url": "https://www.udemy.com/course/the-complete-javascript-course/", "skills_covered": ["JavaScript"], "level": "Beginner", "type": "certification"},
+  {"title": "JavaScript Algorithms and Data Structures", "platform": "freeCodeCamp", "url": "https://www.freecodecamp.org/learn/javascript-algorithms-and-data-structures/", "skills_covered": ["JavaScript", "Advanced JavaScript"], "level": "Advanced", "type": "free"},
+  {"title": "JavaScript Full Course for Beginners", "platform": "freeCodeCamp (YouTube)", "url": "https://www.youtube.com/watch?v=PkZNo7MFNFg", "skills_covered": ["JavaScript"], "level": "Beginner", "type": "free"},
+
+  {"title": "Full Stack Web Development with React Specialization", "platform": "Coursera", "url": "https://www.coursera.org/specializations/full-stack-react", "skills_covered": ["React", "JavaScript", "Full Stack"], "level": "Intermediate", "type": "certification"},
+  {"title": "React - The Complete Guide", "platform": "Udemy", "url": "https://www.udemy.com/course/react-the-complete-guide-incl-redux/", "skills_covered": ["React", "Redux"], "level": "Advanced", "type": "certification"},
+  {"title": "React Course - Beginner's Tutorial", "platform": "freeCodeCamp (YouTube)", "url": "https://www.youtube.com/watch?v=bMknfKXIFA8", "skills_covered": ["React"], "level": "Beginner", "type": "free"},
+
+  {"title": "Node.js, Express, MongoDB & More", "platform": "Udemy", "url": "https://www.udemy.com/course/nodejs-express-mongodb-bootcamp/", "skills_covered": ["Node.js", "Express", "MongoDB", "Backend Development"], "level": "Intermediate", "type": "certification"},
+  {"title": "Node.js Crash Course", "platform": "Traversy Media (YouTube)", "url": "https://www.youtube.com/watch?v=fBNz5xF-Kx4", "skills_covered": ["Node.js"], "level": "Beginner", "type": "free"},
+
+  {"title": "Docker & Kubernetes: The Complete Guide", "platform": "Udemy", "url": "https://www.udemy.com/course/docker-and-kubernetes-the-complete-guide/", "skills_covered": ["Docker", "Kubernetes", "DevOps"], "level": "Advanced", "type": "certification"},
+  {"title": "Docker Official Get Started Guide", "platform": "Docker Docs", "url": "https://docs.docker.com/get-started/", "skills_covered": ["Docker"], "level": "Beginner", "type": "free"},
+  {"title": "Docker Full Course for Beginners", "platform": "freeCodeCamp (YouTube)", "url": "https://www.youtube.com/watch?v=fqMOX6JJhGo", "skills_covered": ["Docker"], "level": "Beginner", "type": "free"},
+
+  {"title": "AWS Certified Solutions Architect - Associate", "platform": "Udemy", "url": "https://www.udemy.com/course/aws-certified-solutions-architect-associate/", "skills_covered": ["AWS", "Cloud Computing"], "level": "Advanced", "type": "certification"},
+  {"title": "AWS Cloud Practitioner Essentials", "platform": "Coursera (AWS)", "url": "https://www.coursera.org/learn/aws-cloud-practitioner-essentials", "skills_covered": ["AWS", "Cloud Computing"], "level": "Beginner", "type": "certification"},
+  {"title": "AWS Full Course for Beginners", "platform": "freeCodeCamp (YouTube)", "url": "https://www.youtube.com/watch?v=k1RI5locZE4", "skills_covered": ["AWS"], "level": "Beginner", "type": "free"},
+
+  {"title": "Google Cloud Fundamentals", "platform": "Coursera", "url": "https://www.coursera.org/learn/gcp-fundamentals", "skills_covered": ["Google Cloud", "Cloud Computing"], "level": "Beginner", "type": "certification"},
+
+  {"title": "CI/CD with GitHub Actions", "platform": "Udemy", "url": "https://www.udemy.com/course/github-actions/", "skills_covered": ["CI/CD", "GitHub Actions", "DevOps"], "level": "Intermediate", "type": "certification"},
+  {"title": "CI/CD Full Course for Beginners", "platform": "freeCodeCamp (YouTube)", "url": "https://www.youtube.com/watch?v=1er2cjUq1UI", "skills_covered": ["CI/CD"], "level": "Beginner", "type": "free"},
+
+  {"title": "Google Cybersecurity Professional Certificate", "platform": "Coursera", "url": "https://www.coursera.org/professional-certificates/google-cybersecurity", "skills_covered": ["Cybersecurity", "Network Security"], "level": "Beginner", "type": "certification"},
+  {"title": "Cybersecurity Full Course for Beginners", "platform": "freeCodeCamp (YouTube)", "url": "https://www.youtube.com/watch?v=inWWhr5tnEA", "skills_covered": ["Cybersecurity"], "level": "Beginner", "type": "free"},
+
+  {"title": "Google UX Design Professional Certificate", "platform": "Coursera", "url": "https://www.coursera.org/professional-certificates/google-ux-design", "skills_covered": ["UX Design", "Figma", "Prototyping"], "level": "Beginner", "type": "certification"},
+  {"title": "UI/UX Design Specialization", "platform": "Coursera (CalArts)", "url": "https://www.coursera.org/specializations/ui-ux-design", "skills_covered": ["UI Design", "UX Design"], "level": "Advanced", "type": "certification"},
+  {"title": "Figma Full Course for Beginners", "platform": "freeCodeCamp (YouTube)", "url": "https://www.youtube.com/watch?v=jwCmIBJ8Jtc", "skills_covered": ["Figma", "UI Design"], "level": "Beginner", "type": "free"},
+
+  {"title": "Software Testing and Automation Bootcamp", "platform": "Udemy", "url": "https://www.udemy.com/course/software-testing-automation/", "skills_covered": ["QA Testing", "Selenium", "Automation Testing"], "level": "Intermediate", "type": "certification"},
+  {"title": "Selenium Full Course for Beginners", "platform": "freeCodeCamp (YouTube)", "url": "https://www.youtube.com/watch?v=Xjv1sY630Uc", "skills_covered": ["Selenium", "QA Testing"], "level": "Beginner", "type": "free"},
+
+  {"title": "Git and GitHub Bootcamp", "platform": "Udemy", "url": "https://www.udemy.com/course/git-and-github-bootcamp/", "skills_covered": ["Git", "GitHub", "Version Control"], "level": "Beginner", "type": "certification"},
+  {"title": "Git and GitHub for Beginners", "platform": "freeCodeCamp (YouTube)", "url": "https://www.youtube.com/watch?v=RGOj5yH7evk", "skills_covered": ["Git", "GitHub"], "level": "Beginner", "type": "free"},
+
+  {"title": "Java Programming Masterclass", "platform": "Udemy", "url": "https://www.udemy.com/course/java-the-complete-java-developer-course/", "skills_covered": ["Java", "Object-Oriented Programming"], "level": "Beginner", "type": "certification"},
+  {"title": "Spring Boot Microservices Bootcamp", "platform": "Udemy", "url": "https://www.udemy.com/course/spring-boot-microservices/", "skills_covered": ["Spring Boot", "Java", "Microservices"], "level": "Advanced", "type": "certification"},
+  {"title": "Java Full Course for Beginners", "platform": "freeCodeCamp (YouTube)", "url": "https://www.youtube.com/watch?v=xk4_1vDrzzo", "skills_covered": ["Java"], "level": "Beginner", "type": "free"},
+
+  {"title": "Natural Language Processing Specialization", "platform": "Coursera (DeepLearning.AI)", "url": "https://www.coursera.org/specializations/natural-language-processing", "skills_covered": ["NLP", "Machine Learning", "Text Processing"], "level": "Advanced", "type": "certification"},
+
+  {"title": "Digital Product Management Certificate", "platform": "Coursera", "url": "https://www.coursera.org/learn/uva-darden-digital-product-management", "skills_covered": ["Product Management", "Agile", "Roadmapping"], "level": "Beginner", "type": "certification"},
+
+  {"title": "Excel Skills for Business Specialization", "platform": "Coursera", "url": "https://www.coursera.org/specializations/excel", "skills_covered": ["Excel", "Data Analysis"], "level": "Beginner", "type": "certification"},
+  {"title": "Excel Full Course for Beginners", "platform": "freeCodeCamp (YouTube)", "url": "https://www.youtube.com/watch?v=Vl0H-qTclOg", "skills_covered": ["Excel"], "level": "Beginner", "type": "free"},
+
+  {"title": "Microsoft Power BI Desktop for Business Intelligence", "platform": "Udemy", "url": "https://www.udemy.com/course/microsoft-power-bi-up-running-with-power-bi-desktop/", "skills_covered": ["Power BI", "Business Intelligence", "Data Visualization"], "level": "Intermediate", "type": "certification"},
+  {"title": "Power BI Full Course for Beginners", "platform": "freeCodeCamp (YouTube)", "url": "https://www.youtube.com/watch?v=AGrl-H87pRU", "skills_covered": ["Power BI"], "level": "Beginner", "type": "free"},
+
+  {"title": "Django for Everybody Specialization", "platform": "Coursera", "url": "https://www.coursera.org/specializations/django", "skills_covered": ["Django", "Python", "Backend Development"], "level": "Intermediate", "type": "certification"},
+  {"title": "Django Full Course for Beginners", "platform": "freeCodeCamp (YouTube)", "url": "https://www.youtube.com/watch?v=F5mRW0jo-U4", "skills_covered": ["Django"], "level": "Beginner", "type": "free"},
+
+  {"title": "REST APIs with Flask and Python", "platform": "Udemy", "url": "https://www.udemy.com/course/rest-api-flask-and-python/", "skills_covered": ["Flask", "REST API", "Python"], "level": "Intermediate", "type": "certification"},
+  {"title": "Flask Full Course for Beginners", "platform": "freeCodeCamp (YouTube)", "url": "https://www.youtube.com/watch?v=Z1RJmh_OqeA", "skills_covered": ["Flask"], "level": "Beginner", "type": "free"},
+
+  {"title": "MongoDB Complete Developer's Guide", "platform": "Udemy", "url": "https://www.udemy.com/course/mongodb-the-complete-developers-guide/", "skills_covered": ["MongoDB", "NoSQL", "Database"], "level": "Intermediate", "type": "certification"},
+  {"title": "MongoDB Full Course for Beginners", "platform": "freeCodeCamp (YouTube)", "url": "https://www.youtube.com/watch?v=c2M-rlkkT5o", "skills_covered": ["MongoDB"], "level": "Beginner", "type": "free"},
+
+  {"title": "FastAPI Certification Course", "platform": "Udemy", "url": "https://www.udemy.com/course/fastapi-the-complete-course/", "skills_covered": ["FastAPI", "Python", "REST API"], "level": "Intermediate", "type": "certification"},
+  {"title": "FastAPI Full Course for Beginners", "platform": "freeCodeCamp (YouTube)", "url": "https://www.youtube.com/watch?v=0sOvCWFmrtA", "skills_covered": ["FastAPI"], "level": "Beginner", "type": "free"}
+]
