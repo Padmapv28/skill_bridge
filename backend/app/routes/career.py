@@ -8,6 +8,7 @@ from app.services.skill_gap_analyzer import analyze_skill_gap
 from app.services.roadmap_generator import generate_roadmap
 from app.services.course_matcher import recommend_courses
 from app.services.course_matcher import recommend_courses
+from app.services.ats_scorer import score_ats
 
 router = APIRouter()
 
@@ -236,3 +237,28 @@ def course_suggestions_api(request: Dict[str, Any]):
         print("[Career] COURSE SUGGESTIONS ERROR:")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Course suggestion generation failed: {str(e)}")
+@router.post("/ats-score")
+def ats_score_api(request: Dict[str, Any]):
+    try:
+        print("[Career] Received request for ATS score")
+
+        resume = request.get("resume")
+        jd_text = request.get("jdText") or ""
+
+        if not resume:
+            raise HTTPException(status_code=400, detail="Resume data is required.")
+        if not jd_text.strip():
+            raise HTTPException(status_code=400, detail="Job description text is required.")
+
+        result = score_ats(resume, jd_text)
+        print(f"[Career] ATS score: {result['overall_score']}")
+        return result
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        print("[Career] ATS SCORE ERROR:")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"ATS scoring failed: {str(e)}")
