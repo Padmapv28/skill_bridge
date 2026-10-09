@@ -11,5 +11,5 @@ read/write a collection, e.g.:
 from motor.motor_asyncio import AsyncIOMotorClient
 from app.config import settings
 
-_client = AsyncIOMotorClient(settings.MONGO_URI)
+_client = AsyncIOMotorClient(settings.MONGO_URI, tz_aware=True)
 db = _client[settings.MONGO_DB_NAME]

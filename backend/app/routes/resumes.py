@@ -1,4 +1,4 @@
-﻿"""
+"""
 resumes.py
 
 POST /api/resumes - save parsed resume data linked to the logged-in user
@@ -6,14 +6,13 @@ GET  /api/resumes/{id} - fetch one resume by its id
 GET  /api/resumes/user/{user_id} - fetch all resumes for a user
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, status, Depends
-from bson import ObjectId
-from bson.errors import InvalidId
 
 from app.database.db import db
 from app.models.schemas import ResumeCreate
+from app.utils.helpers import parse_object_id
 from app.utils.security import get_current_user
 
 router = APIRouter()
@@ -38,7 +37,7 @@ async def create_resume(resume_in: ResumeCreate, current_user: dict = Depends(ge
         )
 
     doc = resume_in.model_dump()
-    doc["uploaded_at"] = datetime.utcnow()
+    doc["uploaded_at"] = datetime.now(timezone.utc)
     result = await db.resumes.insert_one(doc)
     created = await db.resumes.find_one({"_id": result.inserted_id})
     return _serialize_resume(created)
@@ -46,10 +45,7 @@ async def create_resume(resume_in: ResumeCreate, current_user: dict = Depends(ge
 
 @router.get("/resumes/{resume_id}")
 async def get_resume(resume_id: str, current_user: dict = Depends(get_current_user)):
-    try:
-        obj_id = ObjectId(resume_id)
-    except InvalidId:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid resume id.")
+    obj_id = parse_object_id(resume_id, "resume")
 
     resume = await db.resumes.find_one({"_id": obj_id})
     if not resume:

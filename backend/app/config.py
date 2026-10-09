@@ -22,5 +22,12 @@ class Settings:
 
     FRONTEND_ORIGIN: str = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
 
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USER: str = os.getenv("SMTP_USER", "")
+    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+    EMAIL_FROM: str = os.getenv("EMAIL_FROM", "noreply@skillbridge.local")
+    OTP_DEV_MODE: bool = os.getenv("OTP_DEV_MODE", "false").lower() in ("true", "1", "yes")
+
 
 settings = Settings()
