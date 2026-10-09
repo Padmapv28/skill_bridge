@@ -43,10 +43,11 @@ export const Navbar = () => {
   };
 
   const navLinks = [
-    { name: 'Upload Resume', path: '/upload', icon: Upload, authRequired: false },
+    { name: 'Upload', path: '/upload', icon: Upload, authRequired: false },
+    { name: 'ATS Score', path: '/ats-score', icon: Target, authRequired: false },
     { name: 'Role Matcher', path: '/results', icon: Compass, authRequired: false },
-    { name: 'Skill Gap', path: '/skill-gap', icon: Target, authRequired: false },
-    { name: 'Career Roadmap', path: '/roadmap', icon: Map, authRequired: false },
+    { name: 'Skill Gap', path: '/skill-gap', icon: Layers, authRequired: false },
+    { name: 'Roadmap', path: '/roadmap', icon: Map, authRequired: false },
   ];
 
   return (

@@ -65,8 +65,8 @@ export const RegisterPage = () => {
     setIsSubmitting(true);
     try {
       await register(name, email, password);
-      toastSuccess('Account created successfully! Welcome to Resume AI.');
-      navigate('/upload');
+      toastSuccess('Verification code sent to your email! Please verify.');
+      navigate('/verify-otp', { state: { email } });
     } catch (err) {
       const msg = err.response?.data?.message || err.message || 'Registration failed. Please try again.';
       setGeneralError(msg);

@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Sparkles, 
   Upload, 
@@ -15,16 +15,67 @@ import {
   Zap,
   Volume2,
   Terminal,
-  Activity
+  Activity,
+  Search,
+  FileCheck2,
+  Briefcase,
+  Layers,
+  ChevronRight
 } from 'lucide-react';
 import PageWrapper from '../components/layout/PageWrapper';
 import InteractiveGuidedFlow from '../components/guide/InteractiveGuidedFlow';
+import { useResume } from '../context/ResumeContext';
+import { useVoiceAssistant } from '../context/VoiceContext';
 import { sampleParsedResume } from '../api/mockData';
+
+const COMMON_ROLES = [
+  { id: 'ai-eng', title: 'AI Application Engineer', salary: '$190k - $225k', tags: ['Python', 'LLMs', 'RAG'] },
+  { id: 'cloud-arch', title: 'Staff Full-Stack Cloud Architect', salary: '$210k - $250k', tags: ['AWS', 'K8s', 'Distributed'] },
+  { id: 'platform-lead', title: 'Senior Platform Infrastructure Lead', salary: '$195k - $235k', tags: ['Go', 'Docker', 'CI/CD'] },
+  { id: 'ml-eng', title: 'Machine Learning Engineer', salary: '$180k - $215k', tags: ['PyTorch', 'MLOps', 'Transformers'] },
+  { id: 'fullstack-dev', title: 'Senior Full-Stack Developer', salary: '$160k - $195k', tags: ['React', 'Node.js', 'PostgreSQL'] },
+  { id: 'devops-lead', title: 'DevOps / SRE Lead', salary: '$175k - $210k', tags: ['Terraform', 'Kubernetes', 'Linux'] },
+  { id: 'data-scientist', title: 'Principal Data Scientist', salary: '$185k - $220k', tags: ['Statistics', 'Python', 'SQL'] },
+  { id: 'cyber-sec', title: 'Cloud Security Architect', salary: '$190k - $230k', tags: ['IAM', 'Zero-Trust', 'SOC2'] },
+  { id: 'frontend-lead', title: 'Lead Frontend Architect', salary: '$165k - $200k', tags: ['React 18', 'TypeScript', 'WebGL'] },
+];
 
 export const LandingPage = () => {
   const navigate = useNavigate();
+  const { setResume, setSelectedRole } = useResume();
+  const { speak } = useVoiceAssistant();
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const searchContainerRef = useRef(null);
+
+  // Filter common roles based on search input
+  const filteredRoles = COMMON_ROLES.filter(r => 
+    r.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    r.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
+  const handleSelectRole = (role) => {
+    setSelectedRole(role);
+    setIsDropdownOpen(false);
+    speak(`Target role selected: ${role.title}. Let's audit your skill gaps and market alignment.`);
+    navigate('/skill-gap', { state: { role, roleTitle: role.title } });
+  };
 
   const handleQuickDemo = () => {
+    setResume(sampleParsedResume);
+    speak("Loading interactive live demo profile with senior benchmarks.");
     navigate('/results', {
       state: {
         resumeData: sampleParsedResume,
@@ -66,7 +117,7 @@ export const LandingPage = () => {
 
   return (
     <PageWrapper className="pb-20">
-      {/* Hero Section with Kirmada */}
+      {/* Hero Section with Kirmada & Search Bar */}
       <section className="relative pt-8 pb-14 md:pt-14 md:pb-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto overflow-hidden">
         {/* Ambient background glow effects */}
         <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] bg-cyan-500/10 rounded-full blur-[150px] pointer-events-none -z-10" />
@@ -86,15 +137,15 @@ export const LandingPage = () => {
             <span className="bg-gradient-to-r from-cyan-300 via-brand-blue-light to-white bg-clip-text text-transparent drop-shadow-[0_0_25px_rgba(0,240,255,0.4)]">
               Career Leap
             </span>{' '}
-            with Kirmada
+            with AI Precision
           </h1>
 
           <p className="text-slate-300 text-base sm:text-lg leading-relaxed max-w-2xl mx-auto font-sans">
-            Consult directly with Kirmada, your AI Career Architect. Experience spoken English guidance, high-precision role fit predictions, skill gap audits, and personalized learning roadmaps.
+            Consult directly with Kirmada, your AI Career Architect. Search target job roles, upload your resume, evaluate ATS compatibility, and follow your customized 3-phase execution roadmap.
           </p>
 
           {/* Quick Trust Badges */}
-          <div className="pt-4 flex flex-wrap items-center justify-center gap-6 text-xs font-mono text-slate-400">
+          <div className="pt-2 flex flex-wrap items-center justify-center gap-6 text-xs font-mono text-slate-400">
             <span className="flex items-center gap-1.5">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
               96.8% Prediction Accuracy
@@ -110,12 +161,145 @@ export const LandingPage = () => {
           </div>
         </div>
 
+        {/* Task 1: Prominent Job Role Search Bar + Dual Entry Points */}
+        <div className="max-w-2xl mx-auto mb-12 space-y-4">
+          <div ref={searchContainerRef} className="relative">
+            <div className="relative flex items-center">
+              <Search className="w-5 h-5 text-cyan-400 absolute left-4 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onFocus={() => setIsDropdownOpen(true)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setIsDropdownOpen(true);
+                }}
+                placeholder="Search target roles (e.g., AI Application Engineer, Cloud Architect, DevOps)..."
+                className="w-full pl-12 pr-28 py-4 rounded-2xl bg-navy-900/90 border border-cyan-500/40 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 text-white placeholder-slate-400 text-sm shadow-[0_0_30px_rgba(0,240,255,0.15)] transition-all outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (filteredRoles.length > 0) handleSelectRole(filteredRoles[0]);
+                }}
+                className="absolute right-2 px-4 py-2 rounded-xl bg-gradient-to-r from-brand-blue to-cyan-500 text-white font-mono text-xs font-bold shadow-md hover:brightness-110 transition-all"
+              >
+                Search
+              </button>
+            </div>
+
+            {/* Autocomplete Dropdown */}
+            <AnimatePresence>
+              {isDropdownOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  className="absolute top-full left-0 right-0 mt-2 rounded-2xl bg-navy-950/95 border border-cyan-500/30 shadow-2xl backdrop-blur-2xl z-50 overflow-hidden divide-y divide-navy-800/80 max-h-72 overflow-y-auto"
+                >
+                  {filteredRoles.length > 0 ? (
+                    filteredRoles.map((role) => (
+                      <button
+                        key={role.id}
+                        type="button"
+                        onClick={() => handleSelectRole(role)}
+                        className="w-full p-3.5 px-4 text-left hover:bg-navy-900/80 transition-colors flex items-center justify-between group"
+                      >
+                        <div className="space-y-0.5">
+                          <div className="font-heading font-bold text-sm text-white group-hover:text-cyan-300 transition-colors">
+                            {role.title}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-mono text-emerald-400">{role.salary}</span>
+                            <span className="text-[10px] text-slate-500">•</span>
+                            <span className="text-[10px] font-mono text-slate-400">{role.tags.join(', ')}</span>
+                          </div>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-cyan-400 group-hover:translate-x-1 transition-all" />
+                      </button>
+                    ))
+                  ) : (
+                    <div className="p-4 text-center text-xs font-mono text-slate-400">
+                      No matching roles found. Try "AI", "Cloud", or "Full Stack".
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Quick Dual Action Buttons */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-2">
+            <Link
+              to="/upload"
+              onClick={() => speak("Navigating to Resume Upload. Let's parse your credentials.")}
+              className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-navy-950 font-heading font-bold text-sm shadow-[0_0_20px_rgba(0,240,255,0.4)] transition-all flex items-center justify-center gap-2"
+            >
+              <Upload className="w-4 h-4" />
+              <span>Upload Resume (Start Pipeline)</span>
+            </Link>
+
+            <Link
+              to="/ats-score"
+              onClick={() => speak("Opening the ATS Evaluator. Compare your resume against any real-world job description.")}
+              className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-navy-900 hover:bg-navy-850 text-cyan-300 border border-cyan-500/40 font-heading font-semibold text-sm transition-colors flex items-center justify-center gap-2 shadow-md"
+            >
+              <FileCheck2 className="w-4 h-4 text-cyan-400" />
+              <span>Check ATS Score & Paste JD</span>
+            </Link>
+          </div>
+        </div>
+
         {/* The Central Interactive Kirmada Guided Workflow */}
         <InteractiveGuidedFlow />
       </section>
 
+      {/* Task 1: Dedicated "Check ATS Score" Showcase Section */}
+      <section className="py-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+        <div className="p-8 sm:p-12 rounded-3xl bg-gradient-to-r from-navy-900 via-[#07132B] to-navy-900 border border-cyan-500/30 shadow-[0_0_35px_rgba(0,240,255,0.15)] relative overflow-hidden">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+            <div className="lg:col-span-8 space-y-4">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 text-xs font-mono">
+                <Target className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Pre-Application Diagnostic</span>
+              </div>
+
+              <h2 className="font-heading text-2xl sm:text-3xl font-extrabold text-white">
+                Wondering How Your Resume Scores with Company ATS Systems?
+              </h2>
+
+              <p className="text-sm sm:text-base text-slate-300 font-sans max-w-2xl leading-relaxed">
+                Before submitting to job boards, paste the exact job description and test your resume. Our hybrid Sentence-Transformer + LLM engine provides matched keywords, missing requirements, and specific phrasing fixes.
+              </p>
+
+              <div className="flex flex-wrap items-center gap-4 pt-2 text-xs font-mono text-slate-400">
+                <span className="flex items-center gap-1.5 text-emerald-400">
+                  <CheckCircle2 className="w-4 h-4" /> Semantic Embeddings
+                </span>
+                <span className="flex items-center gap-1.5 text-cyan-300">
+                  <CheckCircle2 className="w-4 h-4" /> Sub-Score Breakdown
+                </span>
+                <span className="flex items-center gap-1.5 text-amber-400">
+                  <CheckCircle2 className="w-4 h-4" /> Actionable Fixes
+                </span>
+              </div>
+            </div>
+
+            <div className="lg:col-span-4 flex flex-col items-center lg:items-end justify-center">
+              <Link
+                to="/ats-score"
+                className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-gradient-to-r from-brand-blue to-cyan-500 hover:from-brand-blue-hover hover:to-cyan-400 text-white font-heading font-bold text-sm shadow-glow-cyan transition-all flex items-center justify-center gap-2"
+              >
+                <span>Launch ATS Checker</span>
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Feature Showcase Grid */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
         <div className="text-center max-w-3xl mx-auto mb-14">
           <h2 className="text-xs font-mono font-bold uppercase tracking-widest text-cyan-400 mb-2">
             Engineered For Modern Tech Careers
@@ -124,7 +308,7 @@ export const LandingPage = () => {
             From Raw Resume to Structured Mastery
           </h3>
           <p className="mt-3 text-slate-400 text-sm sm:text-base">
-            Every step is designed to eliminate career ambiguity and provide direct, actionable telemetry for your growth.
+            Every step eliminates ambiguity and provides direct, actionable telemetry for your growth.
           </p>
         </div>
 
@@ -169,7 +353,7 @@ export const LandingPage = () => {
       </section>
 
       {/* Final Interactive CTA Banner */}
-      <section className="pt-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto text-center">
+      <section className="pt-4 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto text-center">
         <div className="rounded-3xl bg-gradient-to-r from-navy-900 via-cyan-500/15 to-navy-900 border border-cyan-500/30 p-10 sm:p-16 shadow-[0_0_40px_rgba(0,240,255,0.2)] relative overflow-hidden">
           <div className="relative z-10 max-w-2xl mx-auto space-y-6">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/15 border border-cyan-500/40 text-cyan-400 text-xs font-mono">

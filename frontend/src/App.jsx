@@ -6,10 +6,15 @@ import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
 import LiveITCompanyBackground from './components/office/LiveITCompanyBackground';
 import ProtectedRoute from './components/auth/ProtectedRoute';
+import { ResumeProvider } from './context/ResumeContext';
+import { VoiceProvider } from './context/VoiceContext';
+import KirmadaVoiceHUD from './components/voice/KirmadaVoiceHUD';
 
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import OTPVerificationPage from './pages/OTPVerificationPage';
+import ATSScorePage from './pages/ATSScorePage';
 import UploadResumePage from './pages/UploadResumePage';
 import ResultsPage from './pages/ResultsPage';
 import SkillGapPage from './pages/SkillGapPage';
@@ -26,6 +31,11 @@ function AnimatedAppRoutes() {
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/verify-otp" element={<OTPVerificationPage />} />
+
+        {/* ATS Score Checker (Pre-application diagnostic) */}
+        <Route path="/ats-score" element={<ATSScorePage />} />
+        <Route path="/ats-checker" element={<ATSScorePage />} />
 
         {/* Workflow Pages */}
         <Route path="/upload" element={<UploadResumePage />} />
@@ -42,16 +52,21 @@ function AnimatedAppRoutes() {
 
 function App() {
   return (
-    <div className="flex flex-col min-h-screen bg-[#040711] text-slate-100 selection:bg-cyan-500 selection:text-navy-950 relative">
-      {/* Live Animated IT Company Background */}
-      <LiveITCompanyBackground />
+    <VoiceProvider>
+      <ResumeProvider>
+        <div className="flex flex-col min-h-screen bg-[#040711] text-slate-100 selection:bg-cyan-500 selection:text-navy-950 relative">
+          {/* Live Animated IT Company Background */}
+          <LiveITCompanyBackground />
 
-      <Navbar />
-      <div className="flex-1 relative z-10">
-        <AnimatedAppRoutes />
-      </div>
-      <Footer />
-    </div>
+          <Navbar />
+          <div className="flex-1 relative z-10">
+            <AnimatedAppRoutes />
+          </div>
+          <KirmadaVoiceHUD />
+          <Footer />
+        </div>
+      </ResumeProvider>
+    </VoiceProvider>
   );
 }
 

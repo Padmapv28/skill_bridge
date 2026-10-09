@@ -15,12 +15,32 @@ export const login = async ({ email, password }) => {
 };
 
 /**
- * Register new user
+ * Register new user (Triggers OTP sending to email)
  * @param {Object} userData - { name, email, password }
- * @returns {Promise<{ token: string, user: Object }>}
+ * @returns {Promise<{ success: boolean, message: string, email: string }>}
  */
 export const register = async ({ name, email, password }) => {
   const response = await apiClient.post('/api/register', { name, email, password });
+  return response.data;
+};
+
+/**
+ * Verify Email OTP code (Completes registration & returns JWT)
+ * @param {Object} payload - { email, otp }
+ * @returns {Promise<{ token: string, user: Object, success: boolean }>}
+ */
+export const verifyOtp = async ({ email, otp }) => {
+  const response = await apiClient.post('/api/verify-otp', { email, otp });
+  return response.data;
+};
+
+/**
+ * Resend OTP code
+ * @param {Object} payload - { email }
+ * @returns {Promise<{ success: boolean, message: string }>}
+ */
+export const resendOtp = async ({ email }) => {
+  const response = await apiClient.post('/api/resend-otp', { email });
   return response.data;
 };
 
@@ -44,5 +64,7 @@ export const logout = async () => {
   } finally {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    localStorage.removeItem('resume_ai_token');
+    localStorage.removeItem('resume_ai_user');
   }
 };
