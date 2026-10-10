@@ -39,7 +39,7 @@ FUZZY_MATCH_THRESHOLD = 90
 SECTION_HEADERS = {
     "education": ["education"],
     "experience": ["experience", "work experience", "professional experience",
-                   "employment history"],
+                   "employment history", "internship", "internships"],
     "projects": ["projects", "real-world projects", "personal projects",
                  "academic projects"],
     "skills": ["skills", "skills & interests", "technical skills"],
@@ -55,14 +55,19 @@ PHONE_REGEX = re.compile(
 )
 YEAR_REGEX = re.compile(r"(19|20)\d{2}")
 
+# Broadened to also catch numeric-slash dates (05/2025) and 2-digit year
+# ranges (2024-25), on top of the original month-name and 4-digit-year forms.
 DURATION_REGEX = re.compile(
-    r"((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|\d{4})"
-    r"\s*[-\u2013]\s*"
-    r"((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|Present|\d{4})",
+    r"((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|"
+    r"\d{1,2}/\d{4}|\d{4})"
+    r"\s*[-\u2013to]{1,4}\s*"
+    r"((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|"
+    r"Present|Current|\d{1,2}/\d{4}|\d{2,4})",
     re.IGNORECASE,
 )
 
-TITLE_SEPARATOR_REGEX = re.compile(r"\s+--\s+|\s+\u2013\s+|\s+-\s+| at ", re.IGNORECASE)
+# Added "|" as a separator -- common in "Title | Company" resume formats.
+TITLE_SEPARATOR_REGEX = re.compile(r"\s+--\s+|\s+\u2013\s+|\s+-\s+|\s*\|\s*| at ", re.IGNORECASE)
 
 DEGREE_KEYWORDS_REGEX = re.compile(
     r"\b(B\.?S\.?|B\.?A\.?|B\.?E\.?|B\.?Tech|B\.?B\.?A\.?|M\.?S\.?|M\.?A\.?|"
@@ -74,6 +79,32 @@ INSTITUTION_KEYWORDS_REGEX = re.compile(
     r"\b(University|College|Institute|School|Academy|Polytechnic)\b",
     re.IGNORECASE,
 )
+
+# PDF glyph artifacts: some templates use icon/symbol fonts for bullet
+# points that pdfplumber/pdfminer can't map to a real character, leaking
+# through as literal "(cid:127)" style text. Strip these before any
+# section or line parsing so they don't get mistaken for content (e.g.
+# the embedded ":" causing a false title/description split).
+CID_ARTIFACT_REGEX = re.compile(r"\(cid:\d+\)\s*")
+
+# A line ending in a bare month abbreviation with no year (e.g. "...Jul")
+# usually means the date got split across two extracted lines by the PDF
+# layout (date in a different visual column read out of order). Merge
+# such a line with the next one before any parsing happens.
+ORPHANED_MONTH_REGEX = re.compile(
+    r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s*\n\s*",
+    re.IGNORECASE,
+)
+
+
+def _clean_raw_text(text: str) -> str:
+    """
+    Repair common PDF-extraction artifacts before any parsing happens.
+    """
+
+    text = CID_ARTIFACT_REGEX.sub("", text)
+    text = ORPHANED_MONTH_REGEX.sub(lambda m: m.group(1) + " ", text)
+    return text
 
 
 def _extract_email(text: str) -> str:
@@ -109,6 +140,44 @@ def _extract_name(text: str) -> str:
     return ""
 
 
+def _match_section_headers(line: str, header_lookup: dict) -> list:
+    """
+    Return every section key this header line matches. Supports combined
+    headers like "Certifications / Experience" or "Skills & Interests" by
+    checking substring containment against each known variant, not just
+    whole-line equality or fuzzy similarity -- a combined header's overall
+    fuzzy score against a single variant is too low to clear the threshold
+    even though it clearly names that section.
+    """
+
+    normalized = line.lower().strip(":").strip()
+
+    # Exact match first (fast path, most headers are this simple).
+    if normalized in header_lookup:
+        return [header_lookup[normalized]]
+
+    matched = []
+
+    if len(line.split()) <= 6 and (line.isupper() or line.istitle()):
+        # Substring containment: catches "certifications / experience"
+        # containing both "certifications" and "experience" as whole words.
+        for variant, key in header_lookup.items():
+            pattern = r"(?<![a-z])" + re.escape(variant) + r"(?![a-z])"
+            if re.search(pattern, normalized) and key not in matched:
+                matched.append(key)
+
+        # Fuzzy fallback only if containment found nothing, for headers
+        # with typos/abbreviations that don't literally contain a variant.
+        if not matched:
+            best = process.extractOne(
+                normalized, header_lookup.keys(), scorer=fuzz.ratio
+            )
+            if best and best[1] >= 85:
+                matched.append(header_lookup[best[0]])
+
+    return matched
+
+
 def _split_into_sections(text: str) -> dict:
     lines = [l.strip() for l in text.split("\n") if l.strip()]
 
@@ -119,27 +188,28 @@ def _split_into_sections(text: str) -> dict:
 
     sections = {key: [] for key in SECTION_HEADERS}
     sections["_preamble"] = []
+    sections["_unknown"] = []
 
-    current_section = "_preamble"
+    current_sections = ["_preamble"]
     for line in lines:
-        normalized = line.lower().strip(":").strip()
-        matched_key = None
+        matched_keys = _match_section_headers(line, header_lookup)
 
-        if normalized in header_lookup:
-            matched_key = header_lookup[normalized]
-        else:
-            if len(line.split()) <= 4 and line.isupper():
-                best = process.extractOne(
-                    normalized, header_lookup.keys(), scorer=fuzz.ratio
-                )
-                if best and best[1] >= 85:
-                    matched_key = header_lookup[best[0]]
-
-        if matched_key:
-            current_section = matched_key
+        if matched_keys:
+            current_sections = matched_keys
             continue
 
-        sections[current_section].append(line)
+        # Looks like a header line (short, all-caps or title-case) but
+        # doesn't match any known section -- treat it as a boundary into
+        # an unknown bucket instead of letting content keep bleeding into
+        # whatever section was active before it (e.g. "STRENGTHS",
+        # "CAREER OBJECTIVE" if not already mapped).
+        if len(line.split()) <= 6 and (line.isupper() or line.istitle()) \
+                and not re.search(r"[.@/\d]", line):
+            current_sections = ["_unknown"]
+            continue
+
+        for key in current_sections:
+            sections[key].append(line)
 
     return sections
 
@@ -219,6 +289,9 @@ def _parse_education(lines: list) -> list:
 
 
 def _parse_experience(lines: list) -> list:
+    if not lines:
+        return []
+
     entries = []
     current = None
     for line in lines:
@@ -235,9 +308,42 @@ def _parse_experience(lines: list) -> list:
             }
         elif current:
             current["description"] = (current["description"] + " " + line).strip()
+        # else: no current entry yet and no date on this line -- held back,
+        # handled by the fallback below if nothing else ever matches.
     if current:
         entries.append(current)
-    return entries
+
+    if entries:
+        return entries
+
+    # Fallback: the section clearly has content (a header matched to get
+    # here) but no line contained a parseable date -- e.g. the resume uses
+    # a date format we don't recognize, or the entry is genuinely missing
+    # its dates (placeholder text, a one-line mention, etc.). Rather than
+    # silently returning "no experience detected", surface what's there.
+    bullet_prefix = re.compile(r"^[•\-\*\u2022]\s*")
+    first_line = bullet_prefix.sub("", lines[0]).strip()
+
+    if ":" in first_line:
+        title, description = first_line.split(":", 1)
+    elif TITLE_SEPARATOR_REGEX.search(first_line):
+        parts = TITLE_SEPARATOR_REGEX.split(first_line, maxsplit=1)
+        title, description = parts[0], parts[1] if len(parts) == 2 else ""
+    else:
+        title, description = first_line, ""
+
+    remaining = " ".join(
+        bullet_prefix.sub("", l).strip() for l in lines[1:]
+    ).strip()
+
+    description = (description + " " + remaining).strip()
+
+    return [{
+        "title": title.strip(),
+        "company": "",
+        "duration": "Not specified",
+        "description": description,
+    }]
 
 
 def _parse_projects(lines: list) -> list:
@@ -283,13 +389,17 @@ def _parse_projects(lines: list) -> list:
 
 def _parse_certifications(lines: list) -> list:
     certs = []
+    bullet_prefix = re.compile(r"^[•\-\*\u2022]\s*")
     for line in lines:
-        parts = [p.strip() for p in line.split(",") if p.strip()]
+        clean = bullet_prefix.sub("", line).strip()
+        parts = [p.strip() for p in clean.split(",") if p.strip()]
         certs.extend(parts)
     return certs
 
 
 def parse_resume(text: str) -> dict:
+    text = _clean_raw_text(text)
+
     name = _extract_name(text)
     email = _extract_email(text)
     phone = _extract_phone(text)
