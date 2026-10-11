@@ -26,12 +26,28 @@ import { mockRoadmapData, mockPredictedRoles, sampleParsedResume } from '../api/
 import { useToast } from '../context/ToastContext';
 import { useResume } from '../context/ResumeContext';
 import { useVoiceAssistant } from '../context/VoiceContext';
+import { useAuth } from '../context/AuthContext';
 
 export const RoadmapPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { toastSuccess, toastInfo } = useToast();
   const { speak } = useVoiceAssistant();
+  const { user } = useAuth();
+
+  const handleCourseClick = (course) => {
+    if (user?.email && course?.title) {
+      resumeApi.emailCourseRegistration({
+        email: user.email,
+        name: user.name || 'Learner',
+        courseTitle: course.title,
+        courseUrl: course.url || 'https://www.coursera.org',
+        platform: course.platform || course.provider || 'Online Course'
+      }).then(() => {
+        toastInfo("Course registration details sent to " + (user?.email || 'your email'));
+      }).catch((e) => console.warn('Course email notification error:', e));
+    }
+  };
   const { 
     roadmapResult, 
     setRoadmap: setContextRoadmap, 
@@ -69,7 +85,24 @@ export const RoadmapPage = () => {
           missingSkills,
           partialSkills
         });
-        const generated = response.roadmap || mockRoadmapData[role.id] || mockRoadmapData.default;
+        const raw = response.roadmap || response;
+        const generated = {
+          role: raw.role || (typeof role === 'object' ? role.title : role),
+          targetTimeline: raw.target_timeline || raw.targetTimeline || '12 weeks',
+          phases: (raw.phases || []).map((p, idx) => ({
+            id: p.id || `phase-${idx+1}`,
+            phaseNumber: p.phase || p.phaseNumber || (idx + 1),
+            title: p.title || p.name || `Phase ${idx+1}`,
+            name: p.title || p.name || `Phase ${idx+1}`,
+            duration: p.duration || '4 weeks',
+            description: p.description || '',
+            skills: p.skills || [],
+            project: p.project || '',
+            courses: p.courses || []
+          })),
+          final_project: raw.final_project || raw.finalProject || '',
+          career_advice: raw.career_advice || raw.careerAdvice || ''
+        };
         setRoadmap(generated);
         setContextRoadmap(generated);
         speak(`Learning roadmap generated for ${role.title}. Paced over ${generated.targetTimeline || '12-16 weeks'} across Foundation, Intermediate, and Advanced milestones.`);
@@ -490,3 +523,5 @@ export const RoadmapPage = () => {
 };
 
 export default RoadmapPage;
+
+

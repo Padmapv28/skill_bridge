@@ -9,7 +9,8 @@ Run locally with:
 
 Then test at http://127.0.0.1:8000/docs
 """
-
+import threading
+from app.services.ollama_client import warm_up
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,13 +28,11 @@ from app.routes import (
     ats_history,
 )
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize MongoDB collections and indexes on startup
     await init_indexes()
+    threading.Thread(target=warm_up, daemon=True).start()
     yield
-
 
 app = FastAPI(
     title="SkillBridge Backend API",

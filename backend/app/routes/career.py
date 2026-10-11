@@ -1,20 +1,41 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 import traceback
 
 from app.services.role_predictor import predict_roles
 from app.services.skill_gap_analyzer import analyze_skill_gap
 from app.services.roadmap_generator import generate_roadmap
 from app.services.course_matcher import recommend_courses
-from app.services.course_matcher import recommend_courses
 from app.services.ats_scorer import score_ats
+from app.services.role_search import search_roles
+from app.utils.email import send_ats_report_email, send_course_enrollment_email
 
 router = APIRouter()
 
 
 class ResumePredictionRequest(BaseModel):
     resume: Dict[str, Any]
+
+
+class RoleSearchRequest(BaseModel):
+    query: Optional[str] = ""
+
+
+@router.post("/search-roles")
+def search_roles_api(request: RoleSearchRequest):
+    try:
+        query_str = (request.query or "").strip()
+        print(f"[Career] Searching roles for query: '{query_str}'")
+        roles = search_roles(query_str)
+        return {"roles": roles}
+    except Exception as e:
+        print("[Career] ROLE SEARCH ERROR:")
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Role search failed: {str(e)}"
+        )
 
 
 @router.post("/predict-roles")
@@ -174,6 +195,8 @@ def roadmap_api(request: Dict[str, Any]):
             status_code=500,
             detail=f"Roadmap generation failed: {str(e)}"
         )
+
+
 @router.post("/course-suggestions")
 def course_suggestions_api(request: Dict[str, Any]):
     try:
@@ -237,13 +260,15 @@ def course_suggestions_api(request: Dict[str, Any]):
         print("[Career] COURSE SUGGESTIONS ERROR:")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Course suggestion generation failed: {str(e)}")
+
+
 @router.post("/ats-score")
 def ats_score_api(request: Dict[str, Any]):
     try:
         print("[Career] Received request for ATS score")
 
-        resume = request.get("resume")
-        jd_text = request.get("jdText") or ""
+        resume = request.get("resume") or request.get("resume_data") or request.get("resumeData")
+        jd_text = request.get("jdText") or request.get("jd_text") or ""
 
         if not resume:
             raise HTTPException(status_code=400, detail="Resume data is required.")
@@ -262,3 +287,50 @@ def ats_score_api(request: Dict[str, Any]):
         print("[Career] ATS SCORE ERROR:")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"ATS scoring failed: {str(e)}")
+
+
+
+class EmailAtsReportRequest(BaseModel):
+    email: str
+    name: Optional[str] = "Candidate"
+    atsResult: Dict[str, Any]
+    jdTitle: Optional[str] = "Target Role"
+
+
+@router.post("/email-ats-report")
+async def email_ats_report_api(request: EmailAtsReportRequest):
+    try:
+        await send_ats_report_email(
+            to_email=request.email.strip(),
+            name=request.name or "Candidate",
+            ats_result=request.atsResult,
+            jd_title=request.jdTitle or "Target Job"
+        )
+        return {"success": True, "message": f"ATS report dispatched to {request.email}"}
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to email ATS report: {str(e)}")
+
+
+class EmailCourseRequest(BaseModel):
+    email: str
+    name: Optional[str] = "Learner"
+    courseTitle: str
+    courseUrl: str
+    platform: Optional[str] = "Online Course"
+
+
+@router.post("/email-course-registration")
+async def email_course_registration_api(request: EmailCourseRequest):
+    try:
+        await send_course_enrollment_email(
+            to_email=request.email.strip(),
+            name=request.name or "Learner",
+            course_title=request.courseTitle,
+            course_url=request.courseUrl,
+            platform=request.platform or "Online Course"
+        )
+        return {"success": True, "message": f"Course enrollment confirmation sent to {request.email}"}
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to email course confirmation: {str(e)}")

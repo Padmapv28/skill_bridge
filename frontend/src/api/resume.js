@@ -2,8 +2,29 @@ import apiClient from './client';
 
 /**
  * Resume Analysis & Prediction API Service
- * Fully integrated with Padma's FastAPI + Ollama LLM backend endpoints (/api/career/*)
+ * Integrated with the FastAPI + Ollama LLM backend (/api/career/*).
+ *
+ * Timeouts: Ollama runs on CPU on the dev laptop, so LLM calls can take
+ * 1-3 minutes. Heavy calls use 300000 ms (5 min); quick calls are shorter.
  */
+
+const LLM_TIMEOUT = 300000; // 5 minutes for heavy LLM calls
+const SEARCH_TIMEOUT = 60000; // 1 minute for role search
+const MAIL_TIMEOUT = 30000; // 30 seconds for email endpoints
+
+/**
+ * Search career roles across ANY domain (live Ollama LLM + guaranteed fallback)
+ * @param {string} query - Target domain or role search query
+ * @returns {Promise<{ roles: Array }>}
+ */
+export const searchRoles = async (query = '') => {
+  const response = await apiClient.post(
+    '/api/career/search-roles',
+    { query },
+    { timeout: SEARCH_TIMEOUT }
+  );
+  return response.data;
+};
 
 /**
  * Upload resume file (.pdf, .docx)
@@ -21,126 +42,145 @@ export const uploadResume = async (file, resumeText = '') => {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
+    timeout: LLM_TIMEOUT,
   });
   return response.data;
 };
 
-
 /**
- * Predict top matching career roles based on parsed resume data (Calls Ollama LLM / Sentence-Transformers)
+ * Predict top matching career roles based on parsed resume data
  * @param {Object} resumeData - Parsed resume content
  * @returns {Promise<{ success: boolean, roles: Array }>}
  */
 export const predictRole = async (resumeData) => {
-  try {
-    const response = await apiClient.post('/api/career/predict-roles', { resume: resumeData });
-    return response.data;
-  } catch (err) {
-    const response = await apiClient.post('/api/predict-role', { resumeData });
-    return response.data;
-  }
+  const response = await apiClient.post(
+    '/api/career/predict-roles',
+    { resume: resumeData },
+    { timeout: LLM_TIMEOUT }
+  );
+  return response.data;
 };
 
 /**
- * Get skill gap analysis for a selected role against user's skills
+ * Get skill gap analysis for a selected role against the user's resume
  * @param {Object} payload - { role: Object, userSkills: Array, resumeData?: Object }
  * @returns {Promise<{ success: boolean, skillGap: Object }>}
  */
 export const getSkillGap = async (payload) => {
-  try {
-    const roleName = payload.role?.title || payload.role;
-    const resumeObj = payload.resumeData || { skills: payload.userSkills || [] };
-    const response = await apiClient.post('/api/career/skill-gap', {
+  const roleName = payload.role?.title || payload.role;
+  const resumeObj = payload.resumeData || { skills: payload.userSkills || [] };
+  const response = await apiClient.post(
+    '/api/career/skill-gap',
+    {
       role: roleName,
       resume: resumeObj,
-    });
-    return response.data;
-  } catch (err) {
-    const response = await apiClient.post('/api/skill-gap', payload);
-    return response.data;
-  }
+    },
+    { timeout: LLM_TIMEOUT }
+  );
+  return response.data;
 };
 
 /**
- * Generate personalized interactive learning roadmap (Calls Ollama LLM in roadmap_generator.py)
+ * Generate personalized interactive learning roadmap
  * @param {Object} payload - { role: Object, resumeData?: Object, missingSkills: Array, partialSkills: Array }
  * @returns {Promise<{ success: boolean, roadmap: Object }>}
  */
 export const generateRoadmap = async (payload) => {
-  try {
-    const roleName = payload.role?.title || payload.role;
-    const resumeObj = payload.resumeData || { skills: payload.userSkills || [] };
-    const response = await apiClient.post('/api/career/roadmap', {
+  const roleName = payload.role?.title || payload.role;
+  const resumeObj = payload.resumeData || { skills: payload.userSkills || [] };
+  const response = await apiClient.post(
+    '/api/career/roadmap',
+    {
       role: roleName,
       resume: resumeObj,
       missingSkills: payload.missingSkills || [],
       partialSkills: payload.partialSkills || [],
-    });
-    return { success: true, roadmap: response.data };
-  } catch (err) {
-    const response = await apiClient.post('/api/generate-roadmap', payload);
-    return response.data;
-  }
+    },
+    { timeout: LLM_TIMEOUT }
+  );
+  return { success: true, roadmap: response.data };
 };
 
-import { evaluateAtsCompatibility } from '../utils/atsEvaluator';
-
 /**
- * Calculate ATS Compatibility Score between Resume and Job Description (Calls Ollama LLM backend or semantic evaluator)
+ * Calculate ATS compatibility score between a resume and a job description
  * @param {Object} payload - { resumeData?: Object, file?: File, jdText: string, resumeText?: string }
  */
 export const checkAtsScore = async ({ resumeData, file, jdText, resumeText = '' }) => {
-  try {
-    if (resumeData && !file) {
-      const response = await apiClient.post(
-        '/api/career/ats-score',
-        {
-          resume: resumeData,
-          jdText: jdText,
-          resumeText: resumeText,
-        },
-        { timeout: 1500 }
-      );
-      return response.data;
-    }
+  let activeResume = resumeData;
 
-    if (file) {
-      const formData = new FormData();
-      formData.append('resume', file);
-      formData.append('jd_text', jdText);
-      if (resumeText) formData.append('resume_text', resumeText);
-      const response = await apiClient.post('/api/ats-score', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 1500,
-      });
-      return response.data;
+  // If a file was uploaded directly on the ATS page, parse it through the backend parser first.
+  // A parse failure is reported to the user instead of scoring an empty resume.
+  if (file && (!activeResume || !activeResume.skills)) {
+    const uploadRes = await uploadResume(file, resumeText);
+    if (!uploadRes?.parsedData) {
+      throw new Error('The server could not read this resume file.');
     }
-
-    const response = await apiClient.post(
-      '/api/ats-score',
-      {
-        resume_data: resumeData,
-        jd_text: jdText,
-        resume_text: resumeText,
-      },
-      { timeout: 1500 }
-    );
-    return response.data;
-  } catch (err) {
-    console.warn('[ATS Scorer] Fast fallback: calculating real-time semantic ATS score in browser (<5ms):', err.message);
-    return evaluateAtsCompatibility({
-      resumeData,
-      resumeText,
-      jdText,
-      fileName: file?.name || '',
-    });
+    activeResume = uploadRes.parsedData;
   }
+
+  // Pasted resume text with no file and no parsed resume
+  if (!activeResume && resumeText) {
+    activeResume = {
+      name: 'Candidate',
+      skills: [],
+      experience: [{ description: resumeText.slice(0, 1000) }],
+    };
+  }
+
+  if (!activeResume) {
+    throw new Error('Please upload a resume before running the ATS check.');
+  }
+
+  const response = await apiClient.post(
+    '/api/career/ats-score',
+    {
+      resume: activeResume,
+      jdText: jdText,
+    },
+    { timeout: LLM_TIMEOUT }
+  );
+  return response.data;
 };
 
-
+/**
+ * Email ATS score evaluation report to the candidate's email
+ * @param {Object} payload - { email, name, atsResult, jdTitle }
+ */
+export const emailAtsReport = async ({ email, name, atsResult, jdTitle }) => {
+  const response = await apiClient.post(
+    '/api/career/email-ats-report',
+    {
+      email,
+      name,
+      atsResult,
+      jdTitle,
+    },
+    { timeout: MAIL_TIMEOUT }
+  );
+  return response.data;
+};
 
 /**
- * Get current session state from backend (Member C endpoint)
+ * Email course enrollment confirmation
+ * @param {Object} payload - { email, name, courseTitle, courseUrl, platform }
+ */
+export const emailCourseRegistration = async ({ email, name, courseTitle, courseUrl, platform }) => {
+  const response = await apiClient.post(
+    '/api/career/email-course-registration',
+    {
+      email,
+      name,
+      courseTitle,
+      courseUrl,
+      platform,
+    },
+    { timeout: MAIL_TIMEOUT }
+  );
+  return response.data;
+};
+
+/**
+ * Get current session state from backend
  * @returns {Promise<{ success: boolean, session: Object }>}
  */
 export const getCurrentSession = async () => {
@@ -149,16 +189,24 @@ export const getCurrentSession = async () => {
 };
 
 /**
- * Update session state incrementally
- * @param {Object} patchData - Partial session fields to update
+ * Clear the saved session on the backend ("start over")
  */
-export const updateSessionState = async (patchData) => {
-  const response = await apiClient.patch('/api/session/state', patchData);
+export const clearBackendSession = async () => {
+  const response = await apiClient.delete('/api/session/current');
   return response.data;
 };
 
 /**
- * Update roadmap skill progress (Member C endpoint)
+ * Deprecated: the backend has no /api/session/state endpoint.
+ * The real routes are PATCH /api/session/predictions, /role, /skill-gap and /roadmap.
+ * Kept as a harmless no-op so existing imports do not break.
+ */
+export const updateSessionState = async () => {
+  return { success: false, skipped: true };
+};
+
+/**
+ * Update roadmap skill progress
  * @param {Object} payload - { roadmapId, skillName, phaseNumber, status }
  */
 export const updateSkillProgress = async ({ roadmapId, skillName, phaseNumber, status }) => {
@@ -180,7 +228,7 @@ export const getProgressSummary = async (roadmapId) => {
 };
 
 /**
- * Direct Learning Suggestions (Member C).
+ * Direct learning suggestions.
  * Uses missing and partial skills to fetch curated + fallback courses.
  */
 export const getCourseSuggestions = async ({
@@ -206,4 +254,3 @@ export const getCourseSuggestions = async ({
 
   return response.data;
 };
-

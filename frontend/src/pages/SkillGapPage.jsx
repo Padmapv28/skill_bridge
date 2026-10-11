@@ -64,17 +64,20 @@ export const SkillGapPage = () => {
     const fetchSkillGap = async () => {
       setIsLoading(true);
       try {
-        const response = await resumeApi.getSkillGap({ role, userSkills });
-        const gap = response.skillGap || mockSkillGapDatabase[role.id] || mockSkillGapDatabase.default;
+        const response = await resumeApi.getSkillGap({
+          role,
+          userSkills: userSkills.length > 0 ? userSkills : (parsedResume?.skills || []),
+          resumeData: parsedResume || { skills: userSkills }
+        });
+        const gap = response.skillGap || response;
         setSkillGap(gap);
         setContextSkillGap(gap);
-        speak(`Skill gap audit complete for ${role.title}. Your role readiness score is ${gap.matchPercentage || 76} percent. I found ${(gap.missingSkills || []).length} critical missing skills to bridge.`);
+        speak(`Skill gap audit complete for ${role.title || role}. Your role readiness score is ${gap.matchPercentage || 76} percent.`);
       } catch (err) {
-        console.warn('API error, using mock skill gap data:', err);
+        console.warn('Skill gap API error:', err);
         const gap = mockSkillGapDatabase[role.id] || mockSkillGapDatabase.default;
         setSkillGap(gap);
         setContextSkillGap(gap);
-        speak(`Skill gap audit complete for ${role.title}. Your readiness score is ${gap.matchPercentage || 76} percent.`);
       } finally {
         setIsLoading(false);
       }

@@ -347,6 +347,7 @@ Rules:
 10. No markdown.
 11. No comments.
 12. Do not repeat the same skill in multiple categories.
+13. For technical/engineering roles, list ONLY hard, technical tools, languages, and methodologies as missing skills. NEVER list generic soft skills (such as 'Decision Making', 'Communication', 'Teamwork', 'Problem Solving') as missing skills.
 
 Return exactly this structure:
 
@@ -393,13 +394,29 @@ Demand must be High, Medium, or Low.
     )
 
     # ONE Ollama call only.
-    response = generate(
-        prompt,
-        num_predict=350,
-        timeout=150,
-    )
-
-    result = extract_json(response)
+    try:
+        response = generate(
+            prompt,
+            num_predict=350,
+            timeout=150,
+        )
+        result = extract_json(response)
+    except Exception as exc:
+        print(f"[Skill Gap AI] LLM generate failed ({exc}), generating fallback analysis...")
+        result = {
+            "role": role_name,
+            "requiredSkills": mapped_required_skills or ["Python", "System Design", "Problem Solving", "APIs"],
+            "matchedSkills": [{"name": s, "proficiency": "Intermediate"} for s in candidate_skills[:5]],
+            "partialSkills": [],
+            "missingSkills": [
+                {
+                    "name": s,
+                    "demand": "High",
+                    "reason": "Essential competency for this role."
+                } for s in (mapped_required_skills or ["System Design", "APIs"]) if s not in candidate_skills
+            ],
+            "summary": f"Skill gap evaluation for {role_name} based on current resume."
+        }
 
     # ---------------------------------------------------------
     # Required skills

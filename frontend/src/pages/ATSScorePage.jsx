@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -26,11 +26,13 @@ import {
   Sliders,
   Award,
   Clock,
-  Briefcase
+  Briefcase,
+  Mail
 } from 'lucide-react';
 import PageWrapper from '../components/layout/PageWrapper';
 import CircularProgress from '../components/common/CircularProgress';
 import { useResume } from '../context/ResumeContext';
+import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useVoiceAssistant } from '../context/VoiceContext';
 import * as resumeApi from '../api/resume';
@@ -212,6 +214,30 @@ export const ATSScorePage = () => {
   const { addToast } = useToast();
   const { parsedResume, setAtsResult, atsResult } = useResume();
   const { speak, replay, isSpeaking, isMuted, toggleMute } = useVoiceAssistant();
+  const { user } = useAuth();
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+
+  const handleEmailReport = async () => {
+    if (!atsResult) return;
+    const targetEmail = user?.email || window.prompt('Enter your email address to receive this report:');
+    if (!targetEmail) return;
+
+    setIsSendingEmail(true);
+    try {
+      await resumeApi.emailAtsReport({
+        email: targetEmail,
+        name: user?.name || parsedResume?.candidateName || 'Candidate',
+        atsResult,
+        jdTitle: jdText.split('\n')[0].slice(0, 50) || 'Target Job'
+      });
+      addToast('ATS Report dispatched to ' + targetEmail + '!', 'success');
+      speak('ATS evaluation report has been dispatched to your email.');
+    } catch (err) {
+      addToast('Could not dispatch email report. Check console.', 'error');
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
 
   const [useExistingResume, setUseExistingResume] = useState(!!parsedResume);
   const [selectedPresetId, setSelectedPresetId] = useState(null);
@@ -546,7 +572,7 @@ export const ATSScorePage = () => {
                           </span>
                         </div>
                         <p className="text-xs text-slate-400">
-                          {parsedResume.candidateName || 'Alex Chen'} • {parsedResume.yearsExperience || '4+'} yrs exp • {(parsedResume.skills || []).length} skills
+                          {parsedResume.candidateName || 'Alex Chen'} â€¢ {parsedResume.yearsExperience || '4+'} yrs exp â€¢ {(parsedResume.skills || []).length} skills
                         </p>
                       </div>
 
@@ -587,7 +613,7 @@ export const ATSScorePage = () => {
                           {selectedFile.name}
                         </p>
                         <p className="text-xs text-slate-400 font-mono mt-0.5">
-                          {(selectedFile.size / 1024 / 1024).toFixed(2)} MB • Content Extracted & Ready
+                          {(selectedFile.size / 1024 / 1024).toFixed(2)} MB â€¢ Content Extracted & Ready
                         </p>
                       </div>
                     ) : (
@@ -705,23 +731,23 @@ export const ATSScorePage = () => {
             <div className={`p-2 rounded-lg border transition-all ${
               analysisStep >= 1 ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-300' : 'border-transparent text-slate-500'
             }`}>
-              • Extracting JD criteria & skills via NLP...
+              â€¢ Extracting JD criteria & skills via NLP...
             </div>
             <div className={`p-2 rounded-lg border transition-all ${
               analysisStep >= 2 ? 'bg-brand-blue/15 border-brand-blue/40 text-brand-blue-light' : 'border-transparent text-slate-500'
             }`}>
-              • Calculating semantic embedding match & experience ratio...
+              â€¢ Calculating semantic embedding match & experience ratio...
             </div>
             <div className={`p-2 rounded-lg border transition-all ${
               analysisStep >= 3 ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300' : 'border-transparent text-slate-500'
             }`}>
-              • Synthesizing dynamic ATS score & personalized recommendations...
+              â€¢ Synthesizing dynamic ATS score & personalized recommendations...
             </div>
           </div>
         </div>
       )}
 
-      {/* Results View — Dynamic Real-Time ATS Results */}
+      {/* Results View â€” Dynamic Real-Time ATS Results */}
       {atsResult && !isAnalyzing && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -753,8 +779,8 @@ export const ATSScorePage = () => {
                     {atsResult.overall_score >= 80
                       ? 'High ATS Compatibility'
                       : atsResult.overall_score >= 60
-                      ? 'Moderate Compatibility — Optimization Advised'
-                      : 'Low Compatibility — Significant Gaps Detected'}
+                      ? 'Moderate Compatibility â€” Optimization Advised'
+                      : 'Low Compatibility â€” Significant Gaps Detected'}
                   </h2>
                   <p className="text-xs sm:text-sm text-slate-300 max-w-xl font-sans leading-relaxed">
                     {atsResult.overall_score >= 80
@@ -929,3 +955,5 @@ export const ATSScorePage = () => {
 };
 
 export default ATSScorePage;
+
+

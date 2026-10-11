@@ -29,28 +29,14 @@ router = APIRouter()
 
 async def _verify_roadmap_access(roadmap_id: str, user_id: str) -> list[dict[str, Any]]:
     """
-    Validate roadmap_id format and user ownership.
+    Validate roadmap_id and user ownership.
     Returns list of progress documents for that roadmap.
-    Raises HTTPException(400) if id format is invalid.
-    Raises HTTPException(404) if no progress found.
-    Raises HTTPException(403) if owned by another user.
+    Allows string slugs (e.g., 'role_ai_app_eng') as well as ObjectIds.
     """
-    if not ObjectId.is_valid(roadmap_id):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid roadmap ID format.",
-        )
-
     cursor = db.roadmap_progress.find({"roadmap_id": roadmap_id})
     docs = [d async for d in cursor]
 
-    if not docs:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Roadmap progress not found.",
-        )
-
-    if docs[0]["user_id"] != user_id:
+    if docs and docs[0].get("user_id") and docs[0]["user_id"] != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have permission to access this roadmap.",
@@ -111,14 +97,21 @@ async def update_skill_progress(
         "skill_name": body.skill_name,
     })
 
-    if not skill_doc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Skill '{body.skill_name}' not found in phase {body.phase_number} of this roadmap.",
-        )
-
     now = datetime.now(timezone.utc)
     completed_at = now if body.status == ProgressStatusEnum.completed else None
+
+    if not skill_doc:
+        doc = {
+            "roadmap_id": roadmap_id,
+            "user_id": user_id,
+            "phase_number": body.phase_number,
+            "skill_name": body.skill_name,
+            "status": body.status.value,
+            "completed_at": completed_at,
+            "updated_at": now,
+        }
+        await db.roadmap_progress.insert_one(doc)
+        return doc
 
     await db.roadmap_progress.update_one(
         {"_id": skill_doc["_id"]},

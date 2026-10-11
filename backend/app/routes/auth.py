@@ -27,7 +27,8 @@ from app.models.schemas import (
     LoginRequest,
     AuthResponse,
 )
-from app.utils.email import send_otp_email
+import asyncio
+from app.utils.email import send_otp_email, send_registration_success_email
 from app.utils.security import (
     hash_password,
     verify_password,
@@ -187,6 +188,10 @@ async def verify_otp(body: VerifyOtpRequest):
 
     # Remove pending record
     await db.pending_registrations.delete_one({"_id": pending["_id"]})
+    try:
+        asyncio.create_task(send_registration_success_email(pending["email"], pending["name"]))
+    except Exception as e:
+        logger.warning(f"Could not dispatch welcome email: {e}")
 
     token = create_access_token(data={"sub": str(created_user["_id"])})
     return {
@@ -291,3 +296,4 @@ async def get_me(current_user: dict = Depends(get_current_user)):
 @router.post("/logout")
 async def logout(current_user: dict = Depends(get_current_user)):
     return {"success": True}
+

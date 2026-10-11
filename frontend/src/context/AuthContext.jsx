@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+﻿import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import * as authApi from '../api/auth';
 import { mockUser } from '../api/mockData';
 
@@ -45,8 +45,30 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
-  const login = useCallback(async (email, password) => {
-    // Basic validation
+  const setAuthSession = useCallback((authToken, authUser) => {
+    if (authToken && authUser) {
+      localStorage.setItem('token', authToken);
+      localStorage.setItem('user', JSON.stringify(authUser));
+      setToken(authToken);
+      setUser(authUser);
+      setSessionNotice(null);
+    }
+  }, []);
+
+  const login = useCallback(async (arg1, arg2) => {
+    // Check if called as login(user, token) or login(token, user) from OTP verification
+    if (typeof arg1 === 'object' && arg2) {
+      setAuthSession(arg2, arg1);
+      return { success: true, user: arg1 };
+    }
+    if (typeof arg2 === 'object' && arg1) {
+      setAuthSession(arg1, arg2);
+      return { success: true, user: arg2 };
+    }
+
+    const email = arg1;
+    const password = arg2;
+
     if (!email || !email.trim() || !password || !password.trim()) {
       throw new Error('Email and password cannot be empty or whitespace only.');
     }
@@ -54,7 +76,7 @@ export const AuthProvider = ({ children }) => {
     setIsLoading(true);
     try {
       const data = await authApi.login({ email: email.trim(), password: password.trim() });
-      const authToken = data.token || 'jwt_' + Date.now();
+      const authToken = data.token;
       const authUser = data.user || {
         id: `usr_${Date.now()}`,
         email: email.trim(),
@@ -62,18 +84,18 @@ export const AuthProvider = ({ children }) => {
         avatar: mockUser.avatar
       };
 
-      // Persist to localStorage
-      localStorage.setItem('token', authToken);
-      localStorage.setItem('user', JSON.stringify(authUser));
-
-      setToken(authToken);
-      setUser(authUser);
-      setSessionNotice(null);
+      if (authToken) {
+        localStorage.setItem('token', authToken);
+        localStorage.setItem('user', JSON.stringify(authUser));
+        setToken(authToken);
+        setUser(authUser);
+        setSessionNotice(null);
+      }
       return { success: true, user: authUser };
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [setAuthSession]);
 
   const register = useCallback(async (name, email, password) => {
     if (!name || !name.trim() || !email || !email.trim() || !password || !password.trim()) {
@@ -87,22 +109,8 @@ export const AuthProvider = ({ children }) => {
         email: email.trim(),
         password: password.trim(),
       });
-
-      const authToken = data.token || 'jwt_' + Date.now();
-      const authUser = data.user || {
-        id: `usr_${Date.now()}`,
-        name: name.trim(),
-        email: email.trim(),
-        avatar: mockUser.avatar
-      };
-
-      localStorage.setItem('token', authToken);
-      localStorage.setItem('user', JSON.stringify(authUser));
-
-      setToken(authToken);
-      setUser(authUser);
-      setSessionNotice(null);
-      return { success: true, user: authUser };
+      // Do not store fake token or log user in prematurely -- wait for OTP verification!
+      return { success: true, data };
     } finally {
       setIsLoading(false);
     }
@@ -144,6 +152,7 @@ export const AuthProvider = ({ children }) => {
     register,
     logout,
     loginDemo,
+    setAuthSession,
     clearSessionNotice,
   };
 
