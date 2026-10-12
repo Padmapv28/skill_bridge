@@ -1,7 +1,7 @@
 import json
 import re
 
-from .ollama_client import generate
+from .ollama_client import FAST_MODEL, generate
 
 
 def normalize_text(value):
@@ -618,7 +618,7 @@ Format (repeat this object 5 times inside the "predictions" array, ranked highes
     )
 
     try:
-        response = generate(prompt, num_predict=600, timeout=180)
+        response = generate(prompt, num_predict=600, timeout=180, model=FAST_MODEL)
         result = clean_model_response(response)
         result = validate_predictions(result, candidate_skills)
     except Exception as exc:
@@ -649,7 +649,14 @@ Required JSON format:
 {{"role": {json.dumps(target_role)}, "fit_score": 55, "justification": "Explain the fit honestly in under 12 words.", "key_skills": []}}
 """
             try:
-                targeted = clean_model_response(generate(target_prompt, num_predict=220, timeout=180))
+                targeted = clean_model_response(
+                    generate(
+                        target_prompt,
+                        num_predict=220,
+                        timeout=180,
+                        model=FAST_MODEL,
+                    )
+                )
             except Exception as exc:
                 print(f"[Career AI] Target-role retry failed; retaining honest profile-based result: {exc}")
                 targeted = {"role": target_role, "fit_score": 67 if "sap" in target_key and not explicit_sap else 70,
