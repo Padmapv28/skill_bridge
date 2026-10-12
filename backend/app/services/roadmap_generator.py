@@ -89,6 +89,11 @@ def attach_real_courses(roadmap):
     return roadmap
 
 
+def select_courses_with_llm(roadmap):
+    """Alias to attach real courses from dataset/matching."""
+    return attach_real_courses(roadmap)
+
+
 def generate_roadmap(role, resume, missing_skills=None, partial_skills=None):
     role_name = get_role_name(role)
 
@@ -179,13 +184,47 @@ Return exactly this structure:
 
     print(f"[Roadmap AI] Generating CURRENT resume roadmap for role: {role_name}")
 
-    response = generate(prompt, num_predict=400, timeout=180)
-
-    result = extract_json(response)
+    try:
+        response = generate(prompt, num_predict=400, timeout=180)
+        result = extract_json(response)
+    except Exception as exc:
+        print(f"[Roadmap AI] LLM generate failed ({exc}), generating fallback roadmap...")
+        m_skills = missing if missing else (candidate_skills[:4] or ["Core Competencies"])
+        result = {
+            "role": role_name,
+            "target_timeline": "12 weeks",
+            "phases": [
+                {
+                    "phase": 1,
+                    "title": "Foundation & Fundamentals",
+                    "description": f"Master initial core skills required for {role_name}.",
+                    "duration": "4 weeks",
+                    "skills": m_skills[:2],
+                    "project": f"Build a foundational prototype for {role_name}."
+                },
+                {
+                    "phase": 2,
+                    "title": "Intermediate Application",
+                    "description": "Develop hands-on proficiency and end-to-end features.",
+                    "duration": "4 weeks",
+                    "skills": m_skills[2:4] if len(m_skills) > 2 else [m_skills[0]],
+                    "project": f"Implement an integrated project solving key requirements."
+                },
+                {
+                    "phase": 3,
+                    "title": "Advanced Mastery & Portfolio",
+                    "description": "Optimize performance and deploy portfolio-ready projects.",
+                    "duration": "4 weeks",
+                    "skills": m_skills[4:6] if len(m_skills) > 4 else ["Architecture & Best Practices"],
+                    "project": f"Deploy a production-grade capstone for {role_name}."
+                }
+            ],
+            "final_project": f"Full-stack Capstone Project for {role_name}.",
+            "career_advice": "Highlight your projects on GitHub and prepare for technical interviews."
+        }
 
     result["role"] = role_name
-
-    result = attach_real_courses(result)
+    result = select_courses_with_llm(result)
 
     print(f"[Roadmap AI] Completed roadmap for: {role_name}")
 

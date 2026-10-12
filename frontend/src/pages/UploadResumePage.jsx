@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -19,7 +19,6 @@ import PageWrapper from '../components/layout/PageWrapper';
 import LiveResumeScannerOverlay from '../components/scenarios/LiveResumeScannerOverlay';
 import * as resumeApi from '../api/resume';
 import { sampleParsedResume } from '../api/mockData';
-import { extractTextFromFile, extractSkillsFromText } from '../utils/atsEvaluator';
 import { useToast } from '../context/ToastContext';
 
 import { useResume } from '../context/ResumeContext';
@@ -34,7 +33,7 @@ const ALLOWED_MIME_TYPES = [
 ];
 
 export const UploadResumePage = () => {
-  const { parsedResume, setResume } = useResume();
+  const { parsedResume, setResume, clearSession } = useResume();
   const { speak } = useVoiceAssistant();
   const [isDragging, setIsDragging] = useState(false);
   const [file, setFile] = useState(null);
@@ -74,6 +73,7 @@ export const UploadResumePage = () => {
 
   const processUpload = async (selectedFile) => {
     setUploadError('');
+
     const errorMsg = validateFile(selectedFile);
     if (errorMsg) {
       setUploadError(errorMsg);
@@ -83,40 +83,89 @@ export const UploadResumePage = () => {
 
     setFile(selectedFile);
     setIsUploading(true);
+    // A new upload begins a new candidate session. Never merge with the previous resume.
+    setParsedData(null);
+    setResume(null);
 
     try {
-      const extractedText = await extractTextFromFile(selectedFile);
-      const response = await resumeApi.uploadResume(selectedFile, extractedText);
-      const parsed = response.parsedData || sampleParsedResume;
-      setParsedData(parsed);
-      setResume(parsed);
-      toastSuccess('Resume parsed and sanitized successfully!');
-      speak(`Resume parsed successfully! Found ${(parsed.skills || []).length} technical skills. Ready to predict your matching career roles.`);
-    } catch (err) {
-      console.warn('Upload error, extracting from local resume file:', err);
-      const extractedText = await extractTextFromFile(selectedFile);
-      const detectedSkills = extractSkillsFromText(extractedText);
-      let cleanName = selectedFile.name.replace(/\.[^/.]+$/, '').replace(/[_\-\.]+/g, ' ').replace(/\bresume\b/gi, '').trim() || 'Alex Chen';
-      cleanName = cleanName
-        .split(' ')
-        .filter(Boolean)
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-        .join(' ');
+      // The backend is the source of truth: it extracts the document text,
+      // parses the resume, and saves the parsed result for this user.
+      // Do not substitute a sample candidate if the request fails.
+      const response = await resumeApi.uploadResume(selectedFile);
+      const parsed = response?.parsedData ?? response?.parsed_data;
 
-      const customParsed = {
-        ...sampleParsedResume,
-        candidateName: cleanName,
-        email: `${cleanName.toLowerCase().replace(/\s+/g, '.')}@example.com`,
-        headline: `${cleanName} • Technical Specialist`,
-        skills: detectedSkills.length >= 3 ? detectedSkills : sampleParsedResume.skills,
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error(
+          'The backend did not return parsed resume data. Check the backend logs and try uploading again.'
+        );
+      }
+
+      const skillCandidates =
+        parsed.skills ??
+        parsed.technical_skills ??
+        parsed.technicalSkills ??
+        parsed.extracted_skills ??
+        parsed.extractedSkills ??
+        [];
+
+      const actualSkills = Array.isArray(skillCandidates)
+        ? skillCandidates
+            .map((skill) => {
+              if (typeof skill === 'string') return skill.trim();
+              if (skill && typeof skill === 'object') {
+                return String(
+                  skill.name ?? skill.skill ?? skill.skill_name ?? ''
+                ).trim();
+              }
+              return '';
+            })
+            .filter(Boolean)
+        : typeof skillCandidates === 'string'
+          ? skillCandidates.split(/[,;|\n]/).map((skill) => skill.trim()).filter(Boolean)
+          : [];
+
+      if (actualSkills.length === 0) {
+        throw new Error(
+          'The resume was received, but no skills were extracted. No sample candidate data was used. Check MongoDB/backend logs and the resume parser before continuing.'
+        );
+      }
+
+      const verifiedParsedData = {
+        ...parsed,
+        candidateName: parsed.candidateName || parsed.name || '',
+        skills: [...new Set(actualSkills)],
       };
-      setParsedData(customParsed);
-      setResume(customParsed);
-      toastSuccess('Resume parsed successfully in dynamic mode!');
-      speak(`Resume parsed for ${customParsed.candidateName}. Ready for role predictions.`);
-    } finally {
 
-      // Keep holographic scanner visible for smooth experience
+      setParsedData(verifiedParsedData);
+      setResume(verifiedParsedData);
+      toastSuccess('Your uploaded resume was parsed successfully.');
+      speak(
+        `Resume parsed successfully. Found ${verifiedParsedData.skills.length} skills. Ready to predict matching career roles.`
+      );
+    } catch (err) {
+      const message =
+        err?.response?.data?.detail ||
+        err?.message ||
+        'Resume upload failed. Check that the backend and database are running, then try again.';
+
+      console.error('Resume upload failed:', err);
+      setUploadError(message);
+      setFile(null);
+      setParsedData(null);
+
+      // Clear local active resume state so a stale/sample profile cannot
+      // be presented as the newly uploaded candidate.
+      try {
+        await clearSession();
+      } catch (clearError) {
+        console.warn('Unable to clear stale resume session:', clearError);
+        setResume(null);
+      }
+
+      toastError(message);
+      speak(`Resume upload failed. ${message}`);
+    } finally {
+      // Keep the scanner visible briefly for a smooth transition.
       setTimeout(() => {
         setIsUploading(false);
       }, 1200);
@@ -160,14 +209,15 @@ export const UploadResumePage = () => {
     }
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
     setFile(null);
     setParsedData(null);
     setUploadError('');
-    speak("Resume cleared. Please upload another resume or use our sample profile.");
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+    await clearSession();
+    speak("Resume cleared. Please upload another resume or explicitly choose the sample profile.");
   };
 
   const handleUseSample = () => {
@@ -175,9 +225,13 @@ export const UploadResumePage = () => {
     setUploadError('');
     speak("Loading senior profile benchmark for Alex Chen...");
     setTimeout(() => {
+      const sampleData = {
+        ...sampleParsedResume,
+        _source: 'sample',
+      };
       setFile({ name: 'Alex_Chen_Senior_Engineer_Resume.pdf', size: 142000 });
-      setParsedData(sampleParsedResume);
-      setResume(sampleParsedResume);
+      setParsedData(sampleData);
+      setResume(sampleData);
       setIsUploading(false);
       toastSuccess('Loaded sample resume profile for evaluation!');
       speak("Sample benchmark loaded. 12 competencies detected across full stack and AI engineering.");
@@ -191,8 +245,18 @@ export const UploadResumePage = () => {
     navigate('/results', {
       state: {
         resumeData: parsedData,
-        sourceFileName: file?.name || 'Resume'
+        sourceFileName: file?.name || 'Resume',
+        forceRefresh: true,
       }
+    });
+  };
+
+  const handleRunAtsAnalysis = () => {
+    if (!parsedData) return;
+    // Pass the exact backend-parsed object through the shared context; ATS still requires a target JD.
+    setResume(parsedData);
+    navigate('/ats-score', {
+      state: { resumeData: parsedData, source: 'upload' }
     });
   };
 
@@ -208,7 +272,7 @@ export const UploadResumePage = () => {
           Upload Your Resume
         </h1>
         <p className="text-slate-400 text-sm sm:text-base">
-          Our AI parser extracts verified skills, experience timelines, and architectural proficiencies.
+          The backend extracts skills, experience, education and projects from the selected resume.
         </p>
       </div>
 
@@ -309,19 +373,19 @@ export const UploadResumePage = () => {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-navy-800">
               <div className="flex items-start gap-3.5">
                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-brand-blue to-cyan-500 flex items-center justify-center text-white font-bold text-lg shadow-glow-blue flex-shrink-0">
-                  {parsedData.candidateName ? parsedData.candidateName.charAt(0) : 'R'}
+                  {(parsedData.candidateName || parsedData.name || 'C').charAt(0).toUpperCase()}
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
                     <h2 className="font-heading text-xl font-bold text-white">
-                      {parsedData.candidateName || 'Candidate Profile'}
+                      {parsedData.candidateName || parsedData.name || 'Candidate Profile'}
                     </h2>
                     <span className="px-2 py-0.5 rounded-full bg-status-success/20 border border-status-success/40 text-status-success text-[10px] font-mono">
-                      Parsed & Verified
+                      {parsedData._source === 'sample' ? 'Sample Profile' : 'Backend Parsed'}
                     </span>
                   </div>
                   <p className="text-xs text-brand-blue-light font-medium mt-0.5">
-                    {parsedData.headline || 'Full-Stack Software Engineer'}
+                    {parsedData.headline || (parsedData.experience?.[0]?.role || parsedData.experience?.[0]?.title ? `${parsedData.experience[0].role || parsedData.experience[0].title}` : (parsedData.skills?.length ? `Specialist • ${parsedData.skills.slice(0, 3).join(', ')}` : 'Professional Candidate'))}
                   </p>
                 </div>
               </div>
@@ -359,9 +423,18 @@ export const UploadResumePage = () => {
                   <Layers className="w-3.5 h-3.5 text-brand-blue-light" />
                   Detected Skills ({parsedData.skills?.length || 0})
                 </h3>
-                <span className="text-[11px] text-slate-400 font-mono">
-                  ATS Score: <strong className="text-status-success">{parsedData.metrics?.atsCompatibilityScore || 92}%</strong>
-                </span>
+                <div className="text-right">
+                  <span className="block text-[11px] text-slate-400 font-mono">
+                    ATS Score: <strong className={typeof parsedData.metrics?.atsCompatibilityScore === 'number' ? 'text-status-success' : 'text-amber-300'}>
+                      {typeof parsedData.metrics?.atsCompatibilityScore === 'number'
+                        ? `${parsedData.metrics.atsCompatibilityScore}%`
+                        : 'Not evaluated'}
+                    </strong>
+                  </span>
+                  {typeof parsedData.metrics?.atsCompatibilityScore !== 'number' && (
+                    <span className="block text-[10px] text-slate-500 mt-1">Open ATS Analysis and compare with a job description.</span>
+                  )}
+                </div>
               </div>
 
               {parsedData.categorizedSkills ? (
@@ -405,12 +478,26 @@ export const UploadResumePage = () => {
                   <Briefcase className="w-3.5 h-3.5 text-cyan-400" />
                   Experience Highlights
                 </h3>
-                {parsedData.experience?.map((exp, idx) => (
-                  <div key={idx} className="text-xs space-y-1 pb-2 border-b border-navy-900 last:border-0">
-                    <p className="font-semibold text-slate-200">{exp.role}</p>
-                    <p className="text-slate-400">{exp.company} • <span className="font-mono text-slate-500">{exp.period}</span></p>
-                  </div>
-                ))}
+                {parsedData.experience && parsedData.experience.length > 0 ? (
+                  parsedData.experience.map((exp, idx) => {
+                    const title = exp.role || exp.title || exp.position || 'Professional Experience';
+                    const company = exp.company || exp.organization || exp.employer || '';
+                    const period = exp.period || exp.duration || exp.years || 'Not specified';
+                    const desc = exp.description || exp.details || '';
+                    return (
+                      <div key={idx} className="text-xs space-y-1 pb-2 border-b border-navy-900 last:border-0">
+                        <p className="font-semibold text-slate-200">{title}</p>
+                        <p className="text-slate-400">
+                          {company ? `${company} • ` : ''}
+                          <span className="font-mono text-slate-500">{period}</span>
+                        </p>
+                        {desc && <p className="text-[11px] text-slate-400 line-clamp-2 mt-0.5">{desc}</p>}
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="text-xs text-slate-400 italic">No formal experience timeline entries detected in this document.</p>
+                )}
               </div>
 
               <div className="p-4 rounded-2xl bg-navy-950/70 border border-navy-800/80 space-y-2.5">
@@ -418,13 +505,26 @@ export const UploadResumePage = () => {
                   <GraduationCap className="w-3.5 h-3.5 text-brand-gold" />
                   Education & Credentials
                 </h3>
-                {parsedData.education?.map((edu, idx) => (
-                  <div key={idx} className="text-xs space-y-1">
-                    <p className="font-semibold text-slate-200">{edu.degree}</p>
-                    <p className="text-slate-400">{edu.institution} • <span className="font-mono text-slate-500">{edu.year}</span></p>
-                    {edu.details && <p className="text-[11px] text-slate-500">{edu.details}</p>}
-                  </div>
-                ))}
+                {parsedData.education && parsedData.education.length > 0 ? (
+                  parsedData.education.map((edu, idx) => {
+                    const degree = edu.degree || edu.qualification || edu.title || 'Degree / Credential';
+                    const inst = edu.institution || edu.university || edu.school || edu.college || '';
+                    const year = edu.year || edu.duration || edu.period || '';
+                    const details = edu.details || edu.description || '';
+                    return (
+                      <div key={idx} className="text-xs space-y-1 pb-2 border-b border-navy-900 last:border-0">
+                        <p className="font-semibold text-slate-200">{degree}</p>
+                        <p className="text-slate-400">
+                          {inst ? `${inst} ` : ''}
+                          {year ? `• ${year}` : ''}
+                        </p>
+                        {details && <p className="text-[11px] text-slate-500">{details}</p>}
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="text-xs text-slate-400 italic">Education details inferred from skills and technical background.</p>
+                )}
               </div>
             </div>
 
@@ -435,14 +535,24 @@ export const UploadResumePage = () => {
                 <span>Ready to predict high-fit career roles</span>
               </div>
 
-              <button
-                type="button"
-                onClick={handleProceedToPrediction}
-                className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-brand-blue hover:bg-brand-blue-hover text-white font-semibold text-sm shadow-glow-blue flex items-center justify-center gap-2.5 transition-all group focus-visible:ring-2"
-              >
-                <span>Predict Matching Roles</span>
-                <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-              </button>
+              <div className="flex w-full sm:w-auto flex-col sm:flex-row gap-3">
+                <button
+                  type="button"
+                  onClick={handleRunAtsAnalysis}
+                  className="w-full sm:w-auto px-6 py-3.5 rounded-xl border border-cyan-500/60 text-cyan-200 hover:bg-cyan-500/10 font-semibold text-sm flex items-center justify-center gap-2 transition-all"
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>Run ATS Analysis</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleProceedToPrediction}
+                  className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-brand-blue hover:bg-brand-blue-hover text-white font-semibold text-sm shadow-glow-blue flex items-center justify-center gap-2.5 transition-all group focus-visible:ring-2"
+                >
+                  <span>Predict Matching Roles</span>
+                  <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+                </button>
+              </div>
             </div>
           </motion.div>
         )}
@@ -452,3 +562,4 @@ export const UploadResumePage = () => {
 };
 
 export default UploadResumePage;
+

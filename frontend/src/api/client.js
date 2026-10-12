@@ -20,7 +20,7 @@ export const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000,
+  timeout: 300000,
 });
 
 // Request interceptor: Attach JWT token from localStorage
@@ -68,7 +68,9 @@ apiClient.interceptors.response.use(
     const isNetworkError = !error.response || error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED';
     const isLocalBackend = BASE_URL.includes('localhost') || BASE_URL.includes('127.0.0.1');
 
-    if ((isNetworkError || error.response?.status === 404) && isLocalBackend) {
+    const demoModeEnabled = import.meta.env.VITE_DEMO_MODE === 'true';
+
+    if (demoModeEnabled && (isNetworkError || error.response?.status === 404) && isLocalBackend) {
       const url = originalRequest.url || '';
       console.info(`[API Client: Demo Mode] Backend at ${BASE_URL} unreachable or endpoint not found (${url}). Providing mock response for seamless evaluation.`);
       

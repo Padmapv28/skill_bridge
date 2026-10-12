@@ -1,8 +1,11 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+﻿import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import * as authApi from '../api/auth';
-import { mockUser } from '../api/mockData';
 
 const AuthContext = createContext(null);
+const ownerKeyFor = (user) => String(user?.id || user?._id || user?.email || '').trim().toLowerCase() || null;
+const announceAccountChange = (user) => {
+  window.dispatchEvent(new CustomEvent('skillbridge:account-changed', { detail: { ownerKey: ownerKeyFor(user) } }));
+};
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -10,99 +13,77 @@ export const AuthProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [sessionNotice, setSessionNotice] = useState(null);
 
-  // Restore token and user from localStorage on initialization
   useEffect(() => {
     try {
-      const storedToken = localStorage.getItem('token');
-      const storedUser = localStorage.getItem('user');
-
-      if (storedToken) {
+      const storedToken = localStorage.getItem('token') || localStorage.getItem('resume_ai_token');
+      const storedUser = localStorage.getItem('user') || localStorage.getItem('resume_ai_user');
+      if (storedToken && storedUser) {
         setToken(storedToken);
-        if (storedUser) {
-          try {
-            setUser(JSON.parse(storedUser));
-          } catch (e) {
-            setUser({ email: 'user@example.com', name: 'Developer' });
-          }
-        }
+        setUser(JSON.parse(storedUser));
+      } else {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        localStorage.removeItem('resume_ai_token');
+        localStorage.removeItem('resume_ai_user');
       }
-    } catch (err) {
-      console.error('Error restoring auth state from localStorage:', err);
+    } catch (error) {
+      console.error('Could not restore authentication state:', error);
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      setToken(null);
+      setUser(null);
     } finally {
       setIsLoading(false);
     }
 
-    // Listen for 401 session expiration event from Axios interceptor
-    const handleSessionExpired = (event) => {
+    const handleExpired = (event) => {
       setUser(null);
       setToken(null);
-      setSessionNotice(event.detail?.message || 'Your session has expired. Please log in again.');
+      setSessionNotice(event.detail?.message || 'Your session has expired. Please sign in again.');
+      announceAccountChange(null);
     };
+    window.addEventListener('auth:session_expired', handleExpired);
+    return () => window.removeEventListener('auth:session_expired', handleExpired);
+  }, []);
 
-    window.addEventListener('auth:session_expired', handleSessionExpired);
-    return () => {
-      window.removeEventListener('auth:session_expired', handleSessionExpired);
-    };
+  const acceptAuthResponse = useCallback((data) => {
+    if (!data?.token || !data?.user) {
+      throw new Error('The server did not return a valid authenticated session. Please try again.');
+    }
+    const authToken = data.token;
+    const authUser = data.user;
+    localStorage.setItem('token', authToken);
+    localStorage.setItem('user', JSON.stringify(authUser));
+    localStorage.removeItem('resume_ai_token');
+    localStorage.removeItem('resume_ai_user');
+    setToken(authToken);
+    setUser(authUser);
+    setSessionNotice(null);
+    announceAccountChange(authUser);
+    return { success: true, user: authUser, token: authToken };
   }, []);
 
   const login = useCallback(async (email, password) => {
-    // Basic validation
-    if (!email || !email.trim() || !password || !password.trim()) {
-      throw new Error('Email and password cannot be empty or whitespace only.');
+    if (!email?.trim() || !password || !password.trim()) {
+      throw new Error('Email and password are required.');
     }
-
     setIsLoading(true);
     try {
-      const data = await authApi.login({ email: email.trim(), password: password.trim() });
-      const authToken = data.token || 'jwt_' + Date.now();
-      const authUser = data.user || {
-        id: `usr_${Date.now()}`,
-        email: email.trim(),
-        name: email.split('@')[0],
-        avatar: mockUser.avatar
-      };
-
-      // Persist to localStorage
-      localStorage.setItem('token', authToken);
-      localStorage.setItem('user', JSON.stringify(authUser));
-
-      setToken(authToken);
-      setUser(authUser);
-      setSessionNotice(null);
-      return { success: true, user: authUser };
+      const data = await authApi.login({ email: email.trim(), password });
+      return acceptAuthResponse(data);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [acceptAuthResponse]);
 
+  // Registration creates a pending OTP request only. It must not create a fake JWT or login.
   const register = useCallback(async (name, email, password) => {
-    if (!name || !name.trim() || !email || !email.trim() || !password || !password.trim()) {
-      throw new Error('All fields are required and cannot be whitespace only.');
+    if (!name?.trim() || !email?.trim() || !password) {
+      throw new Error('Name, email, and password are required.');
     }
-
     setIsLoading(true);
     try {
-      const data = await authApi.register({
-        name: name.trim(),
-        email: email.trim(),
-        password: password.trim(),
-      });
-
-      const authToken = data.token || 'jwt_' + Date.now();
-      const authUser = data.user || {
-        id: `usr_${Date.now()}`,
-        name: name.trim(),
-        email: email.trim(),
-        avatar: mockUser.avatar
-      };
-
-      localStorage.setItem('token', authToken);
-      localStorage.setItem('user', JSON.stringify(authUser));
-
-      setToken(authToken);
-      setUser(authUser);
-      setSessionNotice(null);
-      return { success: true, user: authUser };
+      return await authApi.register({ name: name.trim(), email: email.trim(), password });
     } finally {
       setIsLoading(false);
     }
@@ -111,49 +92,36 @@ export const AuthProvider = ({ children }) => {
   const logout = useCallback(async () => {
     try {
       await authApi.logout();
-    } catch (e) {
-      // ignore
     } finally {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
+      localStorage.removeItem('resume_ai_token');
+      localStorage.removeItem('resume_ai_user');
       setToken(null);
       setUser(null);
+      announceAccountChange(null);
     }
   }, []);
 
+  // Demo login is opt-in only; never manufacture a token in normal operation.
   const loginDemo = useCallback(() => {
-    localStorage.setItem('token', mockUser.token);
-    localStorage.setItem('user', JSON.stringify(mockUser));
-    setToken(mockUser.token);
-    setUser(mockUser);
-    setSessionNotice(null);
-    return mockUser;
+    throw new Error('Demo login is disabled. Use a registered, verified account.');
   }, []);
 
-  const clearSessionNotice = useCallback(() => {
-    setSessionNotice(null);
-  }, []);
+  const clearSessionNotice = useCallback(() => setSessionNotice(null), []);
 
-  const value = {
-    user,
-    token,
-    isAuthenticated: Boolean(token),
-    isLoading,
-    sessionNotice,
-    login,
-    register,
-    logout,
-    loginDemo,
-    clearSessionNotice,
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{
+      user, token, isAuthenticated: Boolean(token && user), isLoading, sessionNotice,
+      login, register, logout, loginDemo, acceptAuthResponse, clearSessionNotice,
+    }}>
+      {children}
+    </AuthContext.Provider>
+  );
 };
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (!context) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };

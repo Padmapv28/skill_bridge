@@ -16,7 +16,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, BackgroundTasks, HTTPException, status, Depends
 
 from app.database.db import db
 from app.models.schemas import (
@@ -27,7 +27,7 @@ from app.models.schemas import (
     LoginRequest,
     AuthResponse,
 )
-from app.utils.email import send_otp_email
+from app.utils.email import send_otp_email, send_welcome_email
 from app.utils.security import (
     hash_password,
     verify_password,
@@ -78,8 +78,8 @@ async def register(user_in: UserCreate):
     existing_user = await db.users.find_one({"email": normalized_email})
     if existing_user:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="An account with this email already exists.",
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An account with this email already exists. Please sign in or use a different email address.",
         )
 
     # Generate a cryptographically secure 6-digit OTP
@@ -117,7 +117,7 @@ async def register(user_in: UserCreate):
         )
 
     return RegisterResponse(
-        message="Verification OTP sent to your email.",
+        message="Verification code sent. Please check your inbox and spam folder.",
         email=normalized_email,
         expires_in_seconds=OTP_EXPIRY_MINUTES * 60,
     )
@@ -129,7 +129,7 @@ async def register(user_in: UserCreate):
     status_code=status.HTTP_200_OK,
     summary="Verify registration OTP and activate user account",
 )
-async def verify_otp(body: VerifyOtpRequest):
+async def verify_otp(body: VerifyOtpRequest, background_tasks: BackgroundTasks):
     normalized_email = body.email.strip().lower()
     pending = await db.pending_registrations.find_one({"email": normalized_email})
 
@@ -185,8 +185,16 @@ async def verify_otp(body: VerifyOtpRequest):
     result = await db.users.insert_one(user_doc)
     created_user = await db.users.find_one({"_id": result.inserted_id})
 
-    # Remove pending record
+    # Remove pending record only after the user account is created.
     await db.pending_registrations.delete_one({"_id": pending["_id"]})
+
+    # Welcome email is sent after the HTTP response; SMTP latency/failure must
+    # not undo a successfully verified account.
+    background_tasks.add_task(
+        send_welcome_email,
+        created_user["email"],
+        created_user.get("name", ""),
+    )
 
     token = create_access_token(data={"sub": str(created_user["_id"])})
     return {
@@ -252,7 +260,7 @@ async def resend_otp(body: ResendOtpRequest):
     )
 
     return RegisterResponse(
-        message="Verification OTP sent to your email.",
+        message="Verification code sent. Please check your inbox and spam folder.",
         email=normalized_email,
         expires_in_seconds=OTP_EXPIRY_MINUTES * 60,
     )

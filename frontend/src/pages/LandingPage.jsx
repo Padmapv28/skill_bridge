@@ -20,13 +20,15 @@ import {
   FileCheck2,
   Briefcase,
   Layers,
-  ChevronRight
+  ChevronRight,
+  Loader2
 } from 'lucide-react';
 import PageWrapper from '../components/layout/PageWrapper';
 import InteractiveGuidedFlow from '../components/guide/InteractiveGuidedFlow';
 import { useResume } from '../context/ResumeContext';
 import { useVoiceAssistant } from '../context/VoiceContext';
 import { sampleParsedResume } from '../api/mockData';
+import { searchRoles } from '../api/resume';
 
 const COMMON_ROLES = [
   { id: 'ai-eng', title: 'AI Application Engineer', salary: '$190k - $225k', tags: ['Python', 'LLMs', 'RAG'] },
@@ -49,13 +51,51 @@ export const LandingPage = () => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const searchContainerRef = useRef(null);
 
-  // Filter common roles based on search input
-  const filteredRoles = COMMON_ROLES.filter(r => 
-    r.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    r.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+    const [activeRoles, setActiveRoles] = useState(COMMON_ROLES);
+  const [isSearching, setIsSearching] = useState(false);
 
-  // Close dropdown on outside click
+  // Debounced live AI role search across all industries
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setActiveRoles(COMMON_ROLES);
+      setIsSearching(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const res = await searchRoles(searchQuery.trim());
+        if (res?.roles && res.roles.length > 0) {
+          setActiveRoles(res.roles);
+        }
+      } catch (err) {
+        console.warn('Live role search error:', err);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const handleImmediateSearch = async () => {
+    if (!searchQuery.trim()) return;
+    setIsSearching(true);
+    setIsDropdownOpen(true);
+    try {
+      const res = await searchRoles(searchQuery.trim());
+      if (res?.roles && res.roles.length > 0) {
+        setActiveRoles(res.roles);
+        handleSelectRole(res.roles[0]);
+      }
+    } catch (err) {
+      console.warn('Search error:', err);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+// Close dropdown on outside click
   useEffect(() => {
     const handleOutsideClick = (e) => {
       if (searchContainerRef.current && !searchContainerRef.current.contains(e.target)) {
@@ -70,7 +110,7 @@ export const LandingPage = () => {
     setSelectedRole(role);
     setIsDropdownOpen(false);
     speak(`Target role selected: ${role.title}. Let's audit your skill gaps and market alignment.`);
-    navigate('/skill-gap', { state: { role, roleTitle: role.title } });
+    navigate('/upload', { state: { role, roleTitle: role.title } });
   };
 
   const handleQuickDemo = () => {
@@ -128,7 +168,7 @@ export const LandingPage = () => {
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-navy-900/90 border border-cyan-500/40 shadow-[0_0_20px_rgba(0,240,255,0.2)] backdrop-blur-md">
             <Activity className="w-4 h-4 text-cyan-400 animate-pulse" />
             <span className="text-xs font-mono font-bold text-cyan-300">
-              Meet Kirmada • Principal AI Career Architect
+              Meet Kirmada â€¢ Principal AI Career Architect
             </span>
           </div>
 
@@ -179,9 +219,7 @@ export const LandingPage = () => {
               />
               <button
                 type="button"
-                onClick={() => {
-                  if (filteredRoles.length > 0) handleSelectRole(filteredRoles[0]);
-                }}
+                onClick={handleImmediateSearch}
                 className="absolute right-2 px-4 py-2 rounded-xl bg-gradient-to-r from-brand-blue to-cyan-500 text-white font-mono text-xs font-bold shadow-md hover:brightness-110 transition-all"
               >
                 Search
@@ -197,8 +235,8 @@ export const LandingPage = () => {
                   exit={{ opacity: 0, y: -8 }}
                   className="absolute top-full left-0 right-0 mt-2 rounded-2xl bg-navy-950/95 border border-cyan-500/30 shadow-2xl backdrop-blur-2xl z-50 overflow-hidden divide-y divide-navy-800/80 max-h-72 overflow-y-auto"
                 >
-                  {filteredRoles.length > 0 ? (
-                    filteredRoles.map((role) => (
+                  {activeRoles.length > 0 ? (
+                    activeRoles.map((role) => (
                       <button
                         key={role.id}
                         type="button"
@@ -211,7 +249,7 @@ export const LandingPage = () => {
                           </div>
                           <div className="flex items-center gap-2">
                             <span className="text-[11px] font-mono text-emerald-400">{role.salary}</span>
-                            <span className="text-[10px] text-slate-500">•</span>
+                            <span className="text-[10px] text-slate-500">â€¢</span>
                             <span className="text-[10px] font-mono text-slate-400">{role.tags.join(', ')}</span>
                           </div>
                         </div>
@@ -220,7 +258,7 @@ export const LandingPage = () => {
                     ))
                   ) : (
                     <div className="p-4 text-center text-xs font-mono text-slate-400">
-                      No matching roles found. Try "AI", "Cloud", or "Full Stack".
+                      Searching or type any career field (e.g. Mechanical Engineering, Nursing, Civil, Design, Finance).
                     </div>
                   )}
                 </motion.div>
@@ -358,7 +396,7 @@ export const LandingPage = () => {
           <div className="relative z-10 max-w-2xl mx-auto space-y-6">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/15 border border-cyan-500/40 text-cyan-400 text-xs font-mono">
               <Zap className="w-3.5 h-3.5" />
-              <span>Instant Analysis • Guided by Kirmada</span>
+              <span>Instant Analysis â€¢ Guided by Kirmada</span>
             </div>
 
             <h2 className="font-heading text-3xl sm:text-4xl font-extrabold text-white">
@@ -392,3 +430,6 @@ export const LandingPage = () => {
 };
 
 export default LandingPage;
+
+
+

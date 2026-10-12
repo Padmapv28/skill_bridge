@@ -395,7 +395,7 @@ Demand must be High, Medium, or Low.
     # ONE Ollama call only.
     response = generate(
         prompt,
-        num_predict=350,
+        num_predict=800,
         timeout=150,
     )
 
