@@ -1,336 +1,231 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+"""Authenticated career analysis endpoints and public JSON ATS endpoint."""
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
+import logging
 import traceback
 
+from bson import ObjectId
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
+
+from app.database.db import db
 from app.services.role_predictor import predict_roles
 from app.services.skill_gap_analyzer import analyze_skill_gap
 from app.services.roadmap_generator import generate_roadmap
 from app.services.course_matcher import recommend_courses
 from app.services.ats_scorer import score_ats
-from app.services.role_search import search_roles
-from app.utils.email import send_ats_report_email, send_course_enrollment_email
+from app.utils.security import get_current_user
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class ResumePredictionRequest(BaseModel):
-    resume: Dict[str, Any]
+    resume: Dict[str, Any] = Field(default_factory=dict)
+    targetRole: Optional[str] = None
+    target_role: Optional[str] = None
 
 
-class RoleSearchRequest(BaseModel):
-    query: Optional[str] = ""
+def _role_name(role: Any) -> str:
+    if isinstance(role, dict):
+        role = role.get("title") or role.get("role") or role.get("name")
+    return str(role or "").strip()
 
 
-@router.post("/search-roles")
-def search_roles_api(request: RoleSearchRequest):
-    try:
-        query_str = (request.query or "").strip()
-        print(f"[Career] Searching roles for query: '{query_str}'")
-        roles = search_roles(query_str)
-        return {"roles": roles}
-    except Exception as e:
-        print("[Career] ROLE SEARCH ERROR:")
-        traceback.print_exc()
-        raise HTTPException(
-            status_code=500,
-            detail=f"Role search failed: {str(e)}"
-        )
+async def _current_resume(user_id: str, supplied: Optional[dict] = None) -> dict:
+    """Prefer the authenticated user's server-side uploaded resume."""
+    session = await db.user_sessions.find_one({"user_id": user_id})
+    saved = (session or {}).get("resume") or {}
+    parsed = saved.get("parsed_data") or saved.get("parsedData")
+    if isinstance(parsed, dict) and parsed:
+        return parsed
+    # The authenticated main pipeline must use the resume uploaded to this
+    # account's server-side session. Do not accept stale browser state here.
+    raise HTTPException(
+        status_code=409,
+        detail="No resume is available for this account. Upload a resume first.",
+    )
+
+
+async def _save_session_fields(user_id: str, fields: dict) -> None:
+    fields = {**fields, "updated_at": datetime.now(timezone.utc), "user_id": user_id}
+    await db.user_sessions.update_one(
+        {"user_id": user_id},
+        {"$set": fields},
+        upsert=True,
+    )
 
 
 @router.post("/predict-roles")
-def predict_roles_api(request: ResumePredictionRequest):
+async def predict_roles_api(
+    request: ResumePredictionRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    user_id = str(current_user["_id"])
+    resume = await _current_resume(user_id, request.resume)
+    target_role = (request.targetRole or request.target_role or "").strip() or None
     try:
-        print("[Career] Received resume for role prediction")
-
-        print(
-            "[Career] Resume keys:",
-            list(request.resume.keys())
-        )
-
-        result = predict_roles(request.resume)
-
-        print(
-            "[Career] Role prediction completed successfully"
-        )
-
+        logger.info("Predicting roles for authenticated user %s", user_id)
+        result = await run_in_threadpool(predict_roles, resume, target_role)
+        await _save_session_fields(user_id, {
+            "predictions": result,
+            "target_role": target_role,
+            "selected_role": None,
+            "skill_gap": None,
+            "roadmap": None,
+            "roadmap_id": None,
+        })
+        if target_role:
+            result["target_role"] = target_role
         return result
-
-    except Exception as e:
-        print("[Career] ROLE PREDICTION ERROR:")
-        traceback.print_exc()
-
-        raise HTTPException(
-            status_code=500,
-            detail=f"Role prediction failed: {str(e)}"
-        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Role prediction failed")
+        raise HTTPException(status_code=500, detail=f"Role prediction failed: {exc}") from exc
 
 
 @router.post("/skill-gap")
-def skill_gap_api(request: Dict[str, Any]):
+async def skill_gap_api(
+    request: Dict[str, Any],
+    current_user: dict = Depends(get_current_user),
+):
+    user_id = str(current_user["_id"])
+    role = request.get("role")
+    if not _role_name(role):
+        raise HTTPException(status_code=400, detail="Role is required.")
+    resume = await _current_resume(user_id, request.get("resume"))
     try:
-        print(
-            "[Career] Received CURRENT resume for skill gap analysis"
-        )
-
-        role = request.get("role")
-        resume = request.get("resume")
-
-        if not role:
-            raise HTTPException(
-                status_code=400,
-                detail="Role is required."
-            )
-
-        if not resume:
-            raise HTTPException(
-                status_code=400,
-                detail="Resume data is required."
-            )
-
-        print("[Career] Skill gap role:", role)
-
-        print(
-            "[Career] Skill gap resume skills:",
-            resume.get("skills", [])
-        )
-
-        result = analyze_skill_gap(
-            role,
-            resume
-        )
-
-        print(
-            "[Career] Skill gap analysis completed successfully"
-        )
-
+        result = await run_in_threadpool(analyze_skill_gap, role, resume)
+        await _save_session_fields(user_id, {
+            "selected_role": _role_name(role),
+            "skill_gap": result,
+            "roadmap": None,
+            "roadmap_id": None,
+        })
         return result
-
     except HTTPException:
         raise
-
-    except Exception as e:
-        print("[Career] SKILL GAP ERROR:")
-        traceback.print_exc()
-
-        raise HTTPException(
-            status_code=500,
-            detail=f"Skill gap analysis failed: {str(e)}"
-        )
+    except Exception as exc:
+        logger.exception("Skill-gap analysis failed")
+        raise HTTPException(status_code=500, detail=f"Skill gap analysis failed: {exc}") from exc
 
 
 @router.post("/roadmap")
-def roadmap_api(request: Dict[str, Any]):
+async def roadmap_api(
+    request: Dict[str, Any],
+    current_user: dict = Depends(get_current_user),
+):
+    user_id = str(current_user["_id"])
+    role = request.get("role")
+    if not _role_name(role):
+        raise HTTPException(status_code=400, detail="Role is required.")
+    resume = await _current_resume(user_id, request.get("resume"))
+    missing_skills = request.get("missingSkills", [])
+    partial_skills = request.get("partialSkills", [])
+
     try:
-        print(
-            "[Career] Received CURRENT resume for roadmap"
+        result = await run_in_threadpool(
+            generate_roadmap,
+            role,
+            resume,
+            missing_skills,
+            partial_skills,
         )
 
-        role = request.get("role")
-        resume = request.get("resume")
+        roadmap_id = str(ObjectId())
+        now = datetime.now(timezone.utc)
+        progress_docs = []
+        for phase_index, phase in enumerate(result.get("phases", []), start=1):
+            phase_number = phase.get("phase", phase.get("phase_number", phase_index))
+            try:
+                phase_number = int(phase_number)
+            except (TypeError, ValueError):
+                phase_number = phase_index
+            for skill in phase.get("skills", []) or []:
+                skill_name = skill.get("name") if isinstance(skill, dict) else skill
+                skill_name = str(skill_name or "").strip()
+                if skill_name:
+                    progress_docs.append({
+                        "user_id": user_id,
+                        "roadmap_id": roadmap_id,
+                        "phase_number": phase_number,
+                        "skill_name": skill_name,
+                        "status": "not_started",
+                        "completed_at": None,
+                        "updated_at": now,
+                    })
 
-        missing_skills = request.get(
-            "missingSkills",
-            []
-        )
+        if progress_docs:
+            await db.roadmap_progress.insert_many(progress_docs, ordered=False)
 
-        partial_skills = request.get(
-            "partialSkills",
-            []
-        )
-
-        if not role:
-            raise HTTPException(
-                status_code=400,
-                detail="Role is required."
-            )
-
-        if not resume:
-            raise HTTPException(
-                status_code=400,
-                detail="Resume data is required."
-            )
-
-        print(
-            "[Career] Roadmap role:",
-            role
-        )
-
-        print(
-            "[Career] Roadmap resume skills:",
-            resume.get("skills", [])
-        )
-
-        print(
-            "[Career] Roadmap missing skills:",
-            missing_skills
-        )
-
-        print(
-            "[Career] Roadmap partial skills:",
-            partial_skills
-        )
-
-        result = generate_roadmap(
-            role=role,
-            resume=resume,
-            missing_skills=missing_skills,
-            partial_skills=partial_skills,
-        )
-
-        print(
-            "[Career] Roadmap generated successfully"
-        )
-
+        result["roadmap_id"] = roadmap_id
+        await _save_session_fields(user_id, {
+            "selected_role": _role_name(role),
+            "roadmap": result,
+            "roadmap_id": roadmap_id,
+        })
         return result
-
     except HTTPException:
         raise
-
-    except Exception as e:
-        print("[Career] ROADMAP ERROR:")
-        traceback.print_exc()
-
-        raise HTTPException(
-            status_code=500,
-            detail=f"Roadmap generation failed: {str(e)}"
-        )
+    except Exception as exc:
+        logger.exception("Roadmap generation failed")
+        raise HTTPException(status_code=500, detail=f"Roadmap generation failed: {exc}") from exc
 
 
 @router.post("/course-suggestions")
-def course_suggestions_api(request: Dict[str, Any]):
+async def course_suggestions_api(
+    request: Dict[str, Any],
+    current_user: dict = Depends(get_current_user),
+):
+    role_name = _role_name(request.get("role"))
+    if not role_name:
+        raise HTTPException(status_code=400, detail="Role is required.")
+
+    def extract_names(items):
+        names, seen = [], set()
+        for item in items or []:
+            name = item.get("name") if isinstance(item, dict) else item
+            name = str(name or "").strip()
+            key = name.casefold()
+            if name and key not in seen:
+                seen.add(key)
+                names.append(name)
+        return names
+
+    missing = extract_names(request.get("missingSkills", []))
+    partial = extract_names(request.get("partialSkills", []))
+    skills = list(dict.fromkeys(missing + partial))[:4]
+    if not skills:
+        return {"role": role_name, "missing_skills": [], "partial_skills": [], "course_suggestions": {}}
+
     try:
-        print("[Career] Received request for course suggestions")
-
-        role = request.get("role")
-        missing_skills = request.get("missingSkills", [])
-        partial_skills = request.get("partialSkills", [])
-
-        if not role:
-            raise HTTPException(status_code=400, detail="Role is required.")
-
-        role_name = (
-            role.get("title") if isinstance(role, dict) else role
-        )
-
-        if not role_name:
-            raise HTTPException(status_code=400, detail="Role title is required.")
-
-        def extract_names(items):
-            names = []
-            for item in items or []:
-                name = item.get("name") if isinstance(item, dict) else item
-                if name:
-                    names.append(str(name).strip())
-            return names
-
-        missing_names = extract_names(missing_skills)
-        partial_names = extract_names(partial_skills)
-
-        all_gap_skills = []
-        seen = set()
-
-        for skill in missing_names + partial_names:
-            if skill not in seen:
-                seen.add(skill)
-                all_gap_skills.append(skill)
-
-        if not all_gap_skills:
-            print("[Career] No skill gaps provided -- nothing to suggest courses for.")
-            return {
-                "role": role_name,
-                "message": "No skill gaps found for this role.",
-                "course_suggestions": {}
-            }
-
-        course_map = recommend_courses(all_gap_skills)
-
-        print(f"[Career] Generated course suggestions for {len(all_gap_skills)} skill(s)")
-
+        course_map = await run_in_threadpool(recommend_courses, skills)
         return {
             "role": role_name,
-            "missing_skills": missing_names,
-            "partial_skills": partial_names,
+            "missing_skills": missing,
+            "partial_skills": partial,
             "course_suggestions": course_map,
         }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        print("[Career] COURSE SUGGESTIONS ERROR:")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Course suggestion generation failed: {str(e)}")
+    except Exception as exc:
+        logger.exception("Course recommendations failed")
+        raise HTTPException(status_code=500, detail=f"Course suggestion generation failed: {exc}") from exc
 
 
 @router.post("/ats-score")
-def ats_score_api(request: Dict[str, Any]):
+async def ats_score_api(request: Dict[str, Any]):
+    """ATS score from already-parsed resume JSON and raw job-description text."""
+    resume = request.get("resume") or request.get("resumeData") or request.get("resume_data")
+    jd_text = request.get("jdText") or request.get("jd_text") or ""
+    if not resume:
+        raise HTTPException(status_code=400, detail="Resume data is required.")
+    if not jd_text.strip():
+        raise HTTPException(status_code=400, detail="Job description text is required.")
     try:
-        print("[Career] Received request for ATS score")
-
-        resume = request.get("resume") or request.get("resume_data") or request.get("resumeData")
-        jd_text = request.get("jdText") or request.get("jd_text") or ""
-
-        if not resume:
-            raise HTTPException(status_code=400, detail="Resume data is required.")
-        if not jd_text.strip():
-            raise HTTPException(status_code=400, detail="Job description text is required.")
-
-        result = score_ats(resume, jd_text)
-        print(f"[Career] ATS score: {result['overall_score']}")
-        return result
-
-    except HTTPException:
-        raise
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        print("[Career] ATS SCORE ERROR:")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"ATS scoring failed: {str(e)}")
-
-
-
-class EmailAtsReportRequest(BaseModel):
-    email: str
-    name: Optional[str] = "Candidate"
-    atsResult: Dict[str, Any]
-    jdTitle: Optional[str] = "Target Role"
-
-
-@router.post("/email-ats-report")
-async def email_ats_report_api(request: EmailAtsReportRequest):
-    try:
-        await send_ats_report_email(
-            to_email=request.email.strip(),
-            name=request.name or "Candidate",
-            ats_result=request.atsResult,
-            jd_title=request.jdTitle or "Target Job"
-        )
-        return {"success": True, "message": f"ATS report dispatched to {request.email}"}
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to email ATS report: {str(e)}")
-
-
-class EmailCourseRequest(BaseModel):
-    email: str
-    name: Optional[str] = "Learner"
-    courseTitle: str
-    courseUrl: str
-    platform: Optional[str] = "Online Course"
-
-
-@router.post("/email-course-registration")
-async def email_course_registration_api(request: EmailCourseRequest):
-    try:
-        await send_course_enrollment_email(
-            to_email=request.email.strip(),
-            name=request.name or "Learner",
-            course_title=request.courseTitle,
-            course_url=request.courseUrl,
-            platform=request.platform or "Online Course"
-        )
-        return {"success": True, "message": f"Course enrollment confirmation sent to {request.email}"}
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to email course confirmation: {str(e)}")
+        return await run_in_threadpool(score_ats, resume, jd_text)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("ATS scoring failed")
+        raise HTTPException(status_code=500, detail=f"ATS scoring failed: {exc}") from exc

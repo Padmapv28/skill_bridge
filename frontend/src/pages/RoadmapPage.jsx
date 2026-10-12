@@ -22,103 +22,175 @@ import PageWrapper from '../components/layout/PageWrapper';
 import OrbitingSpinner from '../components/common/OrbitingSpinner';
 import StateFallback from '../components/common/StateFallback';
 import * as resumeApi from '../api/resume';
-import { mockRoadmapData, mockPredictedRoles, sampleParsedResume } from '../api/mockData';
 import { useToast } from '../context/ToastContext';
 import { useResume } from '../context/ResumeContext';
 import { useVoiceAssistant } from '../context/VoiceContext';
-import { useAuth } from '../context/AuthContext';
+
+
+const PHASE_THEMES = ['foundation', 'intermediate', 'advanced'];
+
+const normalizeRoadmapForUi = (source) => {
+  if (!source || typeof source !== 'object') return null;
+  const sourcePhases = Array.isArray(source.phases) ? source.phases : [];
+  return {
+    ...source,
+    targetTimeline: source.targetTimeline || source.target_timeline || '12 weeks',
+    finalProject: source.finalProject || source.final_project || '',
+    careerAdvice: source.careerAdvice || source.career_advice || '',
+    phases: sourcePhases.map((phase, index) => ({
+      ...phase,
+      phaseNumber: phase.phaseNumber ?? phase.phase_number ?? phase.phase ?? (index + 1),
+      name: phase.name || phase.focus || `${phase.title || `Phase ${index + 1}`} Skill Path`,
+      title: phase.title || phase.name || ['Foundation', 'Intermediate', 'Advanced'][index] || `Phase ${index + 1}`,
+      theme: phase.theme || PHASE_THEMES[Math.min(index, PHASE_THEMES.length - 1)],
+    })),
+  };
+};
 
 export const RoadmapPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { toastSuccess, toastInfo } = useToast();
   const { speak } = useVoiceAssistant();
-  const { user } = useAuth();
-
-  const handleCourseClick = (course) => {
-    if (user?.email && course?.title) {
-      resumeApi.emailCourseRegistration({
-        email: user.email,
-        name: user.name || 'Learner',
-        courseTitle: course.title,
-        courseUrl: course.url || 'https://www.coursera.org',
-        platform: course.platform || course.provider || 'Online Course'
-      }).then(() => {
-        toastInfo("Course registration details sent to " + (user?.email || 'your email'));
-      }).catch((e) => console.warn('Course email notification error:', e));
-    }
-  };
   const { 
     roadmapResult, 
     setRoadmap: setContextRoadmap, 
-    selectedRole, 
-    skillProgress, 
-    updateSkillStatus 
+    selectedRole,
+    parsedResume,
+    skillGapResult,
+    isLoadingSession,
+    skillProgress,
+    updateSkillStatus
   } = useResume();
 
   const [role, setRole] = useState(location.state?.role || selectedRole || null);
+  const resumeData = parsedResume || (isLoadingSession ? location.state?.resumeData : null) || null;
   const [missingSkills, setMissingSkills] = useState(location.state?.missingSkills || []);
   const [partialSkills, setPartialSkills] = useState(location.state?.partialSkills || []);
-  const [roadmap, setRoadmap] = useState(roadmapResult || null);
+  const [roadmap, setRoadmap] = useState(() => normalizeRoadmapForUi(roadmapResult));
   const [isLoading, setIsLoading] = useState(false);
+  const [roadmapError, setRoadmapError] = useState('');
+  const [retryAttempt, setRetryAttempt] = useState(0);
+  const [courseSuggestions, setCourseSuggestions] = useState({});
+  const [coursesLoading, setCoursesLoading] = useState(false);
+  const [coursesError, setCoursesError] = useState('');
+  const roleTitleOf = (value) => typeof value === 'string' ? value.trim() : String(value?.title || value?.role || value?.name || '').trim();
+  const roleTitle = roleTitleOf(role);
+  const displayTimeline = roadmap?.targetTimeline || roadmap?.target_timeline || '12 weeks';
+
+  // Coming directly from Skill Gap means the user has fresh gap inputs.
+  // In that flow, do not silently reuse an older roadmap for the same role;
+  // ask the backend to generate a new roadmap from the current resume and gaps.
+  const hasFreshSkillGapInput = Boolean(
+    location.state &&
+    (location.state.resumeData ||
+      Array.isArray(location.state.missingSkills) ||
+      Array.isArray(location.state.partialSkills))
+  );
 
   useEffect(() => {
-    if (location.state?.role) {
+    if (location.state?.role && roleTitleOf(location.state.role) !== roleTitleOf(role)) {
       setRole(location.state.role);
     } else if (selectedRole && !role) {
       setRole(selectedRole);
     }
-  }, [location.state?.role, selectedRole]);
+    if (location.state?.missingSkills) setMissingSkills(location.state.missingSkills);
+    if (location.state?.partialSkills) setPartialSkills(location.state.partialSkills);
+  }, [location.state?.role, location.state?.missingSkills, location.state?.partialSkills, selectedRole]);
+
+  // Once the authenticated session is hydrated, its server-side roadmap is the
+  // source of truth. Do not revive a stale browser-cached roadmap if the server has none.
+  useEffect(() => {
+    if (isLoadingSession) return;
+    setRoadmap(normalizeRoadmapForUi(roadmapResult));
+  }, [isLoadingSession, roadmapResult]);
+
+  // Restore skill-gap details after refresh so the next roadmap uses the actual gaps.
+  useEffect(() => {
+    if (isLoadingSession) return;
+    if (location.state?.missingSkills === undefined && Array.isArray(skillGapResult?.missingSkills)) {
+      setMissingSkills(skillGapResult.missingSkills);
+    }
+    if (location.state?.partialSkills === undefined && Array.isArray(skillGapResult?.partialSkills)) {
+      setPartialSkills(skillGapResult.partialSkills);
+    }
+  }, [isLoadingSession, location.state?.missingSkills, location.state?.partialSkills, skillGapResult]);
 
   useEffect(() => {
-    if (!role) return;
-    if (roadmap) {
-      speak(`Welcome to your 3-phase execution roadmap for ${role.title}. Paced over ${roadmap.targetTimeline || '12-16 weeks'}.`);
+    if (isLoadingSession) return;
+    if (!roleTitle) return;
+    if (!resumeData) {
+      setRoadmapError('No resume is loaded for this account. Upload a resume before generating a roadmap.');
+      return;
+    }
+    const savedRoadmap = normalizeRoadmapForUi(roadmapResult);
+    const existingRole = roleTitleOf(savedRoadmap?.role);
+    if (savedRoadmap && existingRole.toLowerCase() === roleTitle.toLowerCase() && !hasFreshSkillGapInput) {
+      setRoadmap(savedRoadmap);
+      setRoadmapError('');
+      speak(`Roadmap loaded for ${roleTitle}.`);
       return;
     }
 
+    let cancelled = false;
     const fetchRoadmap = async () => {
       setIsLoading(true);
+      setRoadmapError('');
       try {
         const response = await resumeApi.generateRoadmap({
-          role,
+          role: roleTitle,
+          resumeData,
           missingSkills,
-          partialSkills
+          partialSkills,
         });
-        const raw = response.roadmap || response;
-        const generated = {
-          role: raw.role || (typeof role === 'object' ? role.title : role),
-          targetTimeline: raw.target_timeline || raw.targetTimeline || '12 weeks',
-          phases: (raw.phases || []).map((p, idx) => ({
-            id: p.id || `phase-${idx+1}`,
-            phaseNumber: p.phase || p.phaseNumber || (idx + 1),
-            title: p.title || p.name || `Phase ${idx+1}`,
-            name: p.title || p.name || `Phase ${idx+1}`,
-            duration: p.duration || '4 weeks',
-            description: p.description || '',
-            skills: p.skills || [],
-            project: p.project || '',
-            courses: p.courses || []
-          })),
-          final_project: raw.final_project || raw.finalProject || '',
-          career_advice: raw.career_advice || raw.careerAdvice || ''
-        };
-        setRoadmap(generated);
-        setContextRoadmap(generated);
-        speak(`Learning roadmap generated for ${role.title}. Paced over ${generated.targetTimeline || '12-16 weeks'} across Foundation, Intermediate, and Advanced milestones.`);
+        const generated = response.roadmap;
+        if (!generated || !Array.isArray(generated.phases) || generated.phases.length === 0) {
+          throw new Error('The backend did not return a valid roadmap.');
+        }
+        if (cancelled) return;
+        const normalizedRoadmap = normalizeRoadmapForUi(generated);
+        const withId = { ...normalizedRoadmap, roadmap_id: response.roadmap_id || generated.roadmap_id || null };
+        setRoadmap(withId);
+        setContextRoadmap(withId);
+        speak(`Personalized roadmap generated for ${roleTitle}.`);
       } catch (err) {
-        console.warn('API error, using mock roadmap:', err);
-        const generated = mockRoadmapData[role.id] || mockRoadmapData.default;
-        setRoadmap(generated);
-        setContextRoadmap(generated);
-        speak(`Learning roadmap generated for ${role.title}.`);
+        if (cancelled) return;
+        const message = err?.response?.data?.detail || err?.message || 'Roadmap generation failed.';
+        console.error('Roadmap generation failed:', err);
+        setRoadmapError(message);
+        setRoadmap(null);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
-
     fetchRoadmap();
-  }, [role, missingSkills, partialSkills]);
+    return () => { cancelled = true; };
+  }, [roleTitle, resumeData, missingSkills, partialSkills, retryAttempt, isLoadingSession, hasFreshSkillGapInput]);
+
+  // Direct Learning Suggestions are loaded separately from the roadmap model.
+  // Course titles and URLs come from the course matcher or search-link fallbacks,
+  // not from the LLM inventing resource URLs.
+  useEffect(() => {
+    if (isLoadingSession || !roleTitle) return;
+    let cancelled = false;
+    const loadSuggestions = async () => {
+      setCoursesLoading(true);
+      setCoursesError('');
+      try {
+        const result = await resumeApi.getCourseSuggestions({ role: roleTitle, missingSkills, partialSkills });
+        if (!cancelled) setCourseSuggestions(result?.course_suggestions || {});
+      } catch (err) {
+        if (cancelled) return;
+        const message = err?.response?.data?.detail || err?.message || 'Could not load course suggestions.';
+        setCoursesError(message);
+        setCourseSuggestions({});
+      } finally {
+        if (!cancelled) setCoursesLoading(false);
+      }
+    };
+    loadSuggestions();
+    return () => { cancelled = true; };
+  }, [roleTitle, JSON.stringify(missingSkills), JSON.stringify(partialSkills), isLoadingSession]);
 
   // Robust fallback for direct access or refresh without state
   if (!role) {
@@ -126,46 +198,40 @@ export const RoadmapPage = () => {
       <PageWrapper className="py-12 px-4 sm:px-6 lg:px-8">
         <StateFallback
           pageTitle="Roadmap Parameters Missing"
-          message="To build a personalized learning roadmap, please first select a target role and review your skill gaps, or load our complete AI Application Engineer curriculum."
+          message="To build a personalized roadmap, select a predicted role and complete the skill-gap analysis first."
           primaryActionPath="/results"
           primaryActionLabel="Go to Role Predictions"
           secondaryActionPath="/upload"
           secondaryActionLabel="Upload Resume"
-          sampleType="roadmap"
-          onLoadSample={() => {
-            setRole(mockPredictedRoles[0]);
-            setMissingSkills([
-              { name: 'LangChain & LlamaIndex' },
-              { name: 'Vector Databases' },
-              { name: 'RAG Architectures' }
-            ]);
-            setPartialSkills([
-              { name: 'Python for AI Scripting' },
-              { name: 'Docker Containerization' }
-            ]);
-            speak("Loaded AI Application Engineer curriculum with sample missing competencies.");
-          }}
         />
       </PageWrapper>
     );
   }
 
   const handleSkillStatusChange = async (skill, phaseNumber, newStatus) => {
-    await updateSkillStatus({
-      roadmapId: role?.id || 'default_roadmap',
-      skillName: skill.name,
-      phaseNumber,
-      status: newStatus,
-    });
-
-    if (newStatus === 'completed') {
-      toastSuccess(`Marked "${skill.name}" as Completed!`);
-      speak(`Milestone achieved! ${skill.name} completed.`);
-    } else if (newStatus === 'in_progress') {
-      toastInfo(`Marked "${skill.name}" as In Progress.`);
-      speak(`Marked ${skill.name} as in progress.`);
-    } else {
-      speak(`Reset ${skill.name} to todo.`);
+    const skillName = typeof skill === 'string' ? skill : (skill?.name || skill?.title || 'Skill');
+    if (!roadmap?.roadmap_id) {
+      toastInfo('Roadmap progress will be available after the backend assigns a roadmap ID.');
+      return;
+    }
+    try {
+      await updateSkillStatus({
+        roadmapId: roadmap.roadmap_id,
+        skillName,
+        phaseNumber,
+        status: newStatus,
+      });
+      if (newStatus === 'completed') {
+        toastSuccess(`Marked "${skillName}" as Completed!`);
+        speak(`Milestone achieved! ${skillName} completed.`);
+      } else if (newStatus === 'in_progress') {
+        toastInfo(`Marked "${skillName}" as In Progress.`);
+        speak(`Marked ${skillName} as in progress.`);
+      } else {
+        speak(`Reset ${skillName} to todo.`);
+      }
+    } catch (error) {
+      toastInfo(error?.response?.data?.detail || error.message || 'Could not save roadmap progress.');
     }
   };
 
@@ -207,16 +273,19 @@ export const RoadmapPage = () => {
   };
 
   // Calculate total progress from skillProgress
-  const allSkills = roadmap?.phases?.flatMap((p) => p.skills) || [];
+  const allSkills = (roadmap?.phases?.flatMap((p) => p.skills || []) || []).map((skill, index) => ({
+    name: typeof skill === 'string' ? skill : (skill?.name || skill?.title || `Skill ${index + 1}`),
+    id: typeof skill === 'string' ? skill : (skill?.id || skill?.name || `skill_${index}`),
+  }));
   const totalSkillsCount = allSkills.length;
-  const completedCount = allSkills.filter((s) => (skillProgress[s.name] || skillProgress[s.id]) === 'completed').length;
-  const inProgressCount = allSkills.filter((s) => (skillProgress[s.name] || skillProgress[s.id]) === 'in_progress').length;
+  const completedCount = allSkills.filter((skill) => (skillProgress[skill.name] || skillProgress[skill.id]) === 'completed').length;
+  const inProgressCount = allSkills.filter((skill) => (skillProgress[skill.name] || skillProgress[skill.id]) === 'in_progress').length;
   const progressPercent = totalSkillsCount > 0 ? Math.round((completedCount / totalSkillsCount) * 100) : 0;
 
   // Trigger celebration on 100% completion
   useEffect(() => {
     if (progressPercent === 100 && totalSkillsCount > 0) {
-      speak(`Congratulations! You have completed all roadmap milestones and achieved 100 percent candidate readiness for ${role?.title || 'your target role'}!`);
+      speak(`Congratulations! You have completed all roadmap milestones and achieved 100 percent candidate readiness for ${roleTitle || 'your target role'}!`);
       try {
         confetti({
           particleCount: 120,
@@ -237,7 +306,7 @@ export const RoadmapPage = () => {
             <span>Step 4 of 4 • Personalized 3-Phase Execution</span>
           </div>
           <h1 className="font-heading text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-            Learning Roadmap: <span className="text-brand-blue-light">{role.title}</span>
+            Learning Roadmap: <span className="text-brand-blue-light">{roleTitle}</span>
           </h1>
           <p className="text-slate-400 text-xs sm:text-sm mt-1">
             Sequenced progression designed to bridge critical skill gaps with verified courses
@@ -247,7 +316,7 @@ export const RoadmapPage = () => {
         <div className="flex items-center gap-3 self-start md:self-auto">
           <Link
             to="/skill-gap"
-            state={{ role, userSkills: location.state?.userSkills || [] }}
+            state={{ role, userSkills: resumeData?.skills || [], resumeData, missingSkills, partialSkills }}
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-navy-900 hover:bg-navy-850 text-slate-300 hover:text-white border border-navy-750 text-xs font-medium transition-colors"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
@@ -256,12 +325,20 @@ export const RoadmapPage = () => {
         </div>
       </div>
 
-      {isLoading || !roadmap ? (
+      {roadmapError && !isLoading ? (
+        <div className="glass-card rounded-3xl p-8 border border-rose-500/30 text-center">
+          <p className="text-sm text-rose-300">Roadmap generation failed: {roadmapError}</p>
+          <div className="flex gap-3 justify-center mt-5">
+            <button type="button" onClick={() => setRetryAttempt((v) => v + 1)} className="px-5 py-2.5 rounded-xl bg-brand-blue text-white text-sm font-semibold">Retry Roadmap</button>
+            <Link to="/skill-gap" state={{ role, resumeData, missingSkills, partialSkills }} className="px-5 py-2.5 rounded-xl border border-navy-700 text-slate-200 text-sm">Back to Skill Gap</Link>
+          </div>
+        </div>
+      ) : isLoading || !roadmap ? (
         <div className="glass-card rounded-3xl p-16 text-center border border-brand-blue/30 shadow-glow-blue/20">
           <OrbitingSpinner
             size="lg"
             label="Synthesizing Tailored Learning Path..."
-            subtext={`Generating 3-phase curriculum for ${role.title}`}
+            subtext={`Generating 3-phase curriculum for ${roleTitle}`}
           />
         </div>
       ) : (
@@ -290,10 +367,64 @@ export const RoadmapPage = () => {
 
             <div className="flex items-center gap-2 self-end sm:self-center flex-shrink-0">
               <span className="text-xs font-mono text-slate-400 px-3 py-1.5 rounded-xl bg-navy-950 border border-navy-800">
-                Pacing: <strong className="text-white">{roadmap.targetTimeline || '12-16 Weeks'}</strong>
+                Pacing: <strong className="text-white">{displayTimeline}</strong>
               </span>
             </div>
           </div>
+
+          {/* Direct Learning Suggestions: all gap skills, certification + free, beginner + advanced */}
+          <section className="glass-card rounded-3xl p-6 sm:p-8 border border-cyan-500/25 shadow-card-dark space-y-5">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center">
+                <BookOpen className="w-5 h-5 text-cyan-300" />
+              </div>
+              <div>
+                <h2 className="font-heading text-xl font-bold text-white">Direct Learning Suggestions</h2>
+                <p className="text-xs sm:text-sm text-slate-400 mt-1">Resources for every missing or partial skill, including certification paths and free learning options.</p>
+              </div>
+            </div>
+
+            {coursesLoading && (
+              <div className="flex items-center gap-3 text-sm text-slate-400 py-4">
+                <span className="w-4 h-4 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
+                Matching learning resources to your skill gaps...
+              </div>
+            )}
+            {!coursesLoading && coursesError && (
+              <div className="p-4 rounded-xl bg-rose-500/5 border border-rose-500/25 text-sm text-rose-300">{coursesError}</div>
+            )}
+            {!coursesLoading && !coursesError && Object.keys(courseSuggestions).length === 0 && (
+              <p className="p-4 rounded-xl bg-navy-950/60 border border-navy-800 text-sm text-slate-400">
+                No missing or partial skills were provided, so no additional suggestions are needed.
+              </p>
+            )}
+            {!coursesLoading && !coursesError && Object.entries(courseSuggestions).map(([skillName, groups]) => (
+              <div key={skillName} className="space-y-3">
+                <h3 className="text-sm font-semibold text-white">{skillName}</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {['certification', 'free'].map((kind) => (
+                    <div key={`${skillName}-${kind}`} className="rounded-2xl bg-navy-950/60 border border-navy-800 p-4 space-y-3">
+                      <h4 className="text-xs uppercase tracking-wider font-mono text-cyan-300">{kind === 'certification' ? 'Certification / structured courses' : 'Free resources'}</h4>
+                      {(groups?.[kind] || []).map((course, index) => (
+                        <div key={`${skillName}-${kind}-${index}`} className="border-t border-navy-800 pt-3 first:border-0 first:pt-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-sm font-medium text-slate-100">{course.title}</p>
+                            <span className="shrink-0 rounded-md border border-navy-700 px-2 py-0.5 text-[10px] text-slate-400">{course.level || 'All levels'}</span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 mt-1">{course.platform || course.provider || (kind === 'free' ? 'Free resource' : 'Course provider')}</p>
+                          {course.url && (
+                            <a href={course.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 mt-2 text-xs text-cyan-300 hover:text-white">
+                              Open resource <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </section>
 
           {/* Vertical Timeline */}
           <div className="relative pl-4 sm:pl-8 space-y-12">
@@ -338,7 +469,7 @@ export const RoadmapPage = () => {
                           </span>
                         </div>
                         <h2 className="font-heading text-xl sm:text-2xl font-bold text-white tracking-tight">
-                          {phase.name}
+                          {phase.name || phase.focus || phase.title || `Phase ${pIdx + 1}`}
                         </h2>
                       </div>
                     </div>
@@ -523,5 +654,3 @@ export const RoadmapPage = () => {
 };
 
 export default RoadmapPage;
-
-

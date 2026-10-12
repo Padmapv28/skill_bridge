@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
   Sparkles, 
   Lock, 
@@ -13,6 +13,35 @@ import PageWrapper from '../components/layout/PageWrapper';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 
+const getFriendlyAuthError = (error, fallback) => {
+  const detail = error?.response?.data?.detail || error?.response?.data?.message;
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  if (Array.isArray(detail)) {
+    const messages = detail.map((item) => item?.msg).filter(Boolean);
+    if (messages.length) return messages.join(' ');
+  }
+
+  const status = error?.response?.status;
+  const messages = {
+    400: 'Please check the information you entered and try again.',
+    401: 'Your email or password is incorrect. Please check your credentials.',
+    403: 'Your account needs email verification before you can continue.',
+    404: 'The authentication service could not be found. Please restart SkillBridge and try again.',
+    409: 'An account with this email already exists. Please sign in instead.',
+    410: 'Your verification code has expired. Request a new code.',
+    422: 'Some information is missing or invalid. Please check the form and try again.',
+    429: 'Too many attempts. Please wait before trying again.',
+    502: 'SkillBridge could not send the email. Please check the email configuration and try again.',
+  };
+  if (status && messages[status]) return messages[status];
+  if (!error?.response) {
+    const message = error?.message || '';
+    if (message && !/network error|failed to fetch|timeout/i.test(message)) return message;
+    return 'Cannot connect to SkillBridge. Check that the backend is running and try again.';
+  }
+  return fallback;
+};
+
 export const RegisterPage = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -25,6 +54,7 @@ export const RegisterPage = () => {
   const { register } = useAuth();
   const { toastSuccess, toastError } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const validateForm = () => {
     const errors = {};
@@ -44,8 +74,8 @@ export const RegisterPage = () => {
 
     if (!trimmedPassword) {
       errors.password = 'Password is required and cannot be whitespace.';
-    } else if (trimmedPassword.length < 6) {
-      errors.password = 'Password must be at least 6 characters.';
+    } else if (trimmedPassword.length < 8) {
+      errors.password = 'Password must be at least 8 characters.';
     }
 
     if (password !== confirmPassword) {
@@ -65,10 +95,10 @@ export const RegisterPage = () => {
     setIsSubmitting(true);
     try {
       await register(name, email, password);
-      toastSuccess('Verification code sent to your email! Please verify.');
-      navigate('/verify-otp', { state: { email } });
+      toastSuccess(`Verification code sent to ${email.trim()}. Please check your inbox and spam folder.`);
+      navigate('/verify-otp', { state: { email, from: location.state?.from || null } });
     } catch (err) {
-      const msg = err.response?.data?.message || err.message || 'Registration failed. Please try again.';
+      const msg = getFriendlyAuthError(err, 'Registration failed. Please try again.');
       setGeneralError(msg);
       toastError(msg);
     } finally {
@@ -161,7 +191,7 @@ export const RegisterPage = () => {
             {/* Password Field */}
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1.5" htmlFor="reg-password-input">
-                Password (min. 6 characters)
+                Password (min. 8 characters)
               </label>
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -238,7 +268,7 @@ export const RegisterPage = () => {
 
           <div className="mt-6 text-center text-xs text-slate-400">
             Already have an account?{' '}
-            <Link to="/login" className="font-semibold text-brand-blue-light hover:underline">
+            <Link to="/login" state={{ from: location.state?.from || null }} className="font-semibold text-brand-blue-light hover:underline">
               Sign in
             </Link>
           </div>

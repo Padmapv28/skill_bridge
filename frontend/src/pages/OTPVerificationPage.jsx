@@ -7,13 +7,42 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import * as authApi from '../api/auth';
 
+const getFriendlyAuthError = (error, fallback) => {
+  const detail = error?.response?.data?.detail || error?.response?.data?.message;
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  if (Array.isArray(detail)) {
+    const messages = detail.map((item) => item?.msg).filter(Boolean);
+    if (messages.length) return messages.join(' ');
+  }
+
+  const status = error?.response?.status;
+  const messages = {
+    400: 'Please check the information you entered and try again.',
+    401: 'Your email or password is incorrect. Please check your credentials.',
+    403: 'Your account needs email verification before you can continue.',
+    404: 'The authentication service could not be found. Please restart SkillBridge and try again.',
+    409: 'An account with this email already exists. Please sign in instead.',
+    410: 'Your verification code has expired. Request a new code.',
+    422: 'Some information is missing or invalid. Please check the form and try again.',
+    429: 'Too many attempts. Please wait before trying again.',
+    502: 'SkillBridge could not send the email. Please check the email configuration and try again.',
+  };
+  if (status && messages[status]) return messages[status];
+  if (!error?.response) {
+    const message = error?.message || '';
+    if (message && !/network error|failed to fetch|timeout/i.test(message)) return message;
+    return 'Cannot connect to SkillBridge. Check that the backend is running and try again.';
+  }
+  return fallback;
+};
+
 export const OTPVerificationPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { login: setAuthLogin } = useAuth();
+  const { acceptAuthResponse } = useAuth();
   const { addToast } = useToast();
 
-  const initialEmail = location.state?.email || 'student@example.com';
+  const initialEmail = location.state?.email || '';
   const [email, setEmail] = useState(initialEmail);
   const [isEditingEmail, setIsEditingEmail] = useState(false);
 
@@ -96,16 +125,12 @@ export const OTPVerificationPage = () => {
 
     try {
       const res = await authApi.verifyOtp({ email, otp: otpCode });
-      addToast('Email verified successfully! Welcome to SkillBridge.', 'success');
-
-      // Auto-login with returned JWT
-      if (res.token && res.user && setAuthLogin) {
-        setAuthLogin(res.user, res.token);
-      }
-
-      navigate('/upload', { replace: true });
+      // Accept the actual JWT/user returned by the verified backend account.
+      acceptAuthResponse(res);
+      addToast('Registration successful! Thank you for registering.', 'success');
+      navigate(location.state?.from || '/upload', { replace: true });
     } catch (err) {
-      const msg = err.response?.data?.detail || err.response?.data?.message || 'Invalid or expired OTP code. Please try again.';
+      const msg = getFriendlyAuthError(err, 'Invalid or expired verification code. Please try again.');
       setErrorMsg(msg);
       addToast(msg, 'error');
     } finally {
@@ -125,7 +150,7 @@ export const OTPVerificationPage = () => {
       inputRefs.current[0]?.focus();
       addToast('A new 6-digit verification code has been sent to your email.', 'info');
     } catch (err) {
-      const msg = err.response?.data?.detail || 'Failed to resend verification code. Please try again.';
+      const msg = getFriendlyAuthError(err, 'Failed to resend verification code. Please try again.');
       setErrorMsg(msg);
       addToast(msg, 'error');
     } finally {
@@ -228,9 +253,9 @@ export const OTPVerificationPage = () => {
             <div className="pt-2 text-center text-xs font-mono space-y-2">
               <div className="text-slate-400">
                 {timer > 0 ? (
-                  <span>Code expires in: <strong className="text-cyan-400">{formatTimer()}</strong></span>
+                  <span>Resend available in: <strong className="text-cyan-400">{formatTimer()}</strong></span>
                 ) : (
-                  <span className="text-amber-400">Code expired. Please request a new one.</span>
+                  <span className="text-amber-400">You can request a new verification code now.</span>
                 )}
               </div>
 
@@ -251,6 +276,7 @@ export const OTPVerificationPage = () => {
             <div className="pt-4 border-t border-navy-800 text-center">
               <Link
                 to="/login"
+                state={{ from: location.state?.from || null }}
                 className="inline-flex items-center gap-1.5 text-xs font-mono text-slate-400 hover:text-slate-200 transition-colors"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />

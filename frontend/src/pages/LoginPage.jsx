@@ -16,6 +16,35 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import OrbitingSpinner from '../components/common/OrbitingSpinner';
 
+const getFriendlyAuthError = (error, fallback) => {
+  const detail = error?.response?.data?.detail || error?.response?.data?.message;
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  if (Array.isArray(detail)) {
+    const messages = detail.map((item) => item?.msg).filter(Boolean);
+    if (messages.length) return messages.join(' ');
+  }
+
+  const status = error?.response?.status;
+  const messages = {
+    400: 'Please check the information you entered and try again.',
+    401: 'Your email or password is incorrect. Please check your credentials.',
+    403: 'Your account needs email verification before you can continue.',
+    404: 'The authentication service could not be found. Please restart SkillBridge and try again.',
+    409: 'An account with this email already exists. Please sign in instead.',
+    410: 'Your verification code has expired. Request a new code.',
+    422: 'Some information is missing or invalid. Please check the form and try again.',
+    429: 'Too many attempts. Please wait before trying again.',
+    502: 'SkillBridge could not send the email. Please check the email configuration and try again.',
+  };
+  if (status && messages[status]) return messages[status];
+  if (!error?.response) {
+    const message = error?.message || '';
+    if (message && !/network error|failed to fetch|timeout/i.test(message)) return message;
+    return 'Cannot connect to SkillBridge. Check that the backend is running and try again.';
+  }
+  return fallback;
+};
+
 export const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -23,7 +52,7 @@ export const LoginPage = () => {
   const [generalError, setGeneralError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { login, loginDemo, sessionNotice, clearSessionNotice } = useAuth();
+  const { login, sessionNotice, clearSessionNotice } = useAuth();
   const { toastSuccess, toastError } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
@@ -32,7 +61,7 @@ export const LoginPage = () => {
   const searchParams = new URLSearchParams(location.search);
   const isSessionExpired = searchParams.get('reason') === 'session_expired' || Boolean(sessionNotice);
 
-  const fromPath = location.state?.from?.pathname || '/upload';
+  const fromPath = location.state?.from || '/upload';
 
   const validateForm = () => {
     const errors = {};
@@ -47,8 +76,8 @@ export const LoginPage = () => {
 
     if (!trimmedPassword) {
       errors.password = 'Password is required and cannot be empty or whitespace.';
-    } else if (trimmedPassword.length < 6) {
-      errors.password = 'Password must be at least 6 characters.';
+    } else if (trimmedPassword.length < 8) {
+      errors.password = 'Password must be at least 8 characters.';
     }
 
     setFieldErrors(errors);
@@ -68,22 +97,12 @@ export const LoginPage = () => {
       toastSuccess('Signed in successfully! Welcome back.');
       navigate(fromPath, { replace: true });
     } catch (err) {
-      const msg = err.response?.data?.message || err.message || 'Invalid email or password.';
+      const msg = getFriendlyAuthError(err, 'Invalid email or password.');
       setGeneralError(msg);
       toastError(msg);
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleDemoSignIn = () => {
-    setIsSubmitting(true);
-    setTimeout(() => {
-      loginDemo();
-      toastSuccess('Signed in as Demo Engineer!');
-      navigate('/upload', { replace: true });
-      setIsSubmitting(false);
-    }, 400);
   };
 
   return (
@@ -214,7 +233,7 @@ export const LoginPage = () => {
           <div className="mt-5 pt-5 border-t border-navy-800/80">
             <button
               type="button"
-              onClick={handleDemoSignIn}
+              onClick={() => setGeneralError('Demo sign-in is disabled. Please register and verify your email.')}
               disabled={isSubmitting}
               className="w-full py-2.5 px-4 rounded-xl bg-navy-850 hover:bg-navy-800 text-slate-200 border border-navy-700 hover:border-brand-gold/40 text-xs font-medium flex items-center justify-center gap-2 transition-all"
             >
@@ -225,7 +244,7 @@ export const LoginPage = () => {
 
           <div className="mt-6 text-center text-xs text-slate-400">
             Don't have an account yet?{' '}
-            <Link to="/register" className="font-semibold text-brand-blue-light hover:underline">
+            <Link to="/register" state={{ from: location.state?.from || null }} className="font-semibold text-brand-blue-light hover:underline">
               Create an account
             </Link>
           </div>
