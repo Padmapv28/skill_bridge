@@ -15,10 +15,37 @@ from app.services.skill_gap_analyzer import analyze_skill_gap
 from app.services.roadmap_generator import generate_roadmap
 from app.services.course_matcher import recommend_courses
 from app.services.ats_scorer import score_ats
+from app.services.role_search import search_roles as search_roles_service
 from app.utils.security import get_current_user
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+@router.post("/search-roles")
+async def search_roles_api(request: Dict[str, Any]):
+    """Public role search used by the landing page."""
+    query = str(
+        request.get("query")
+        or request.get("searchQuery")
+        or request.get("search_query")
+        or request.get("q")
+        or ""
+    ).strip()
+
+    if not query:
+        return {"roles": []}
+
+    try:
+        roles = await run_in_threadpool(
+            search_roles_service,
+            query,
+        )
+        return {"roles": roles}
+    except Exception as exc:
+        logger.exception("Live role search failed")
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to search career roles right now.",
+        ) from exc
 
 
 class ResumePredictionRequest(BaseModel):
