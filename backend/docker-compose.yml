@@ -1,0 +1,11 @@
+# Local production-like run:  docker compose up --build
+# Reads your existing backend/.env (use a MongoDB Atlas URL there, or add a mongo service of your own).
+services:
+  api:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: "8000"
+    ports:
+      - "8000:8000"

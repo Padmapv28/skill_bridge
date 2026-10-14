@@ -18,6 +18,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.routes import flow, jobs, ops
 
 from app.config import settings
 from app.database.indexes import init_indexes
@@ -172,6 +173,25 @@ app.include_router(
     ats_history.router,
     prefix="/api/ats-history",
     tags=["ats-history"],
+)
+# 9. Role-first flow (target role, analysis, state)
+app.include_router(
+    flow.router,
+    prefix="/api",
+    tags=["flow"],
+)
+
+# 10. Job openings after roadmap completion
+app.include_router(
+    jobs.router,
+    prefix="/api",
+    tags=["jobs"],
+)
+
+# 11. Liveness / readiness probes (/healthz, /readyz)
+app.include_router(
+    ops.router,
+    tags=["ops"],
 )
 
 

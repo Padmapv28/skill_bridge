@@ -1,0 +1,3 @@
+# Extra runtime packages for the new features (your requirements.txt is not touched).
+httpx        # live job listings (Adzuna)
+gunicorn     # production server for the Dockerfile

@@ -1,0 +1,4 @@
+# Test-only packages for backend/tests
+pytest
+pytest-asyncio
+mongomock-motor
