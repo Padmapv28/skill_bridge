@@ -13,13 +13,17 @@ import {
   Layers,
   HelpCircle,
   TrendingUp,
-  BarChart3
+  BarChart3,
+  Briefcase,
+  ExternalLink
 } from 'lucide-react';
 import PageWrapper from '../components/layout/PageWrapper';
 import OrbitingSpinner from '../components/common/OrbitingSpinner';
 import CircularProgress from '../components/common/CircularProgress';
 import StateFallback from '../components/common/StateFallback';
+import JobOpeningsModal from '../components/jobs/JobOpeningsModal';
 import * as resumeApi from '../api/resume';
+
 import { mockSkillGapDatabase, mockPredictedRoles, sampleParsedResume } from '../api/mockData';
 import { useToast } from '../context/ToastContext';
 import { useResume } from '../context/ResumeContext';
@@ -44,6 +48,13 @@ export const SkillGapPage = () => {
   );
   const [skillGap, setSkillGap] = useState(skillGapResult || null);
   const [isLoading, setIsLoading] = useState(false);
+  const [showJobOpenings, setShowJobOpenings] = useState(false);
+
+  const handleOpenJobs = () => {
+    setShowJobOpenings(true);
+    speak(`Fetching current verified job openings for ${role?.title || 'this role'}. I found active opportunities across LinkedIn, Indeed, Google Jobs, and leading tech companies.`);
+  };
+
 
   useEffect(() => {
     if (location.state?.role) {
@@ -137,6 +148,14 @@ export const SkillGapPage = () => {
         </div>
 
         <div className="flex items-center gap-3 self-start md:self-auto">
+          <button
+            type="button"
+            onClick={handleOpenJobs}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-brand-gold/15 hover:bg-brand-gold/25 text-brand-gold border border-brand-gold/40 text-xs font-semibold transition-all hover:scale-[1.02] shadow-sm"
+          >
+            <Briefcase className="w-3.5 h-3.5 text-brand-gold" />
+            <span>Live Openings & Apply</span>
+          </button>
           <Link
             to="/results"
             state={{ resumeData: location.state?.resumeData || sampleParsedResume }}
@@ -358,22 +377,41 @@ export const SkillGapPage = () => {
                 Ready to bridge the {((skillGap.missingSkills?.length || 0) + (skillGap.partialSkills?.length || 0))} identified skill gaps?
               </h3>
               <p className="text-xs sm:text-sm text-slate-300">
-                Generate a structured 3-phase curriculum with verified external course material.
+                Generate a structured 3-phase curriculum or explore current openings for {role?.title}.
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={handleBuildRoadmap}
-              className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-brand-blue hover:bg-brand-blue-hover text-white font-semibold text-sm shadow-glow-blue flex items-center justify-center gap-2.5 transition-all group focus-visible:ring-2 flex-shrink-0"
-            >
-              <Map className="w-4 h-4" />
-              <span>Build My Roadmap</span>
-              <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-            </button>
+            <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={handleOpenJobs}
+                className="w-full sm:w-auto px-5 py-3.5 rounded-xl bg-navy-800 hover:bg-navy-750 text-brand-gold border border-brand-gold/40 hover:border-brand-gold font-semibold text-sm flex items-center justify-center gap-2 transition-all flex-shrink-0"
+              >
+                <Briefcase className="w-4 h-4" />
+                <span>View Live Openings</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleBuildRoadmap}
+                className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-brand-blue hover:bg-brand-blue-hover text-white font-semibold text-sm shadow-glow-blue flex items-center justify-center gap-2.5 transition-all group focus-visible:ring-2 flex-shrink-0"
+              >
+                <Map className="w-4 h-4" />
+                <span>Build My Roadmap</span>
+                <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+              </button>
+            </div>
           </div>
         </div>
       )}
+
+      {/* Job Openings & Direct Application Modal */}
+      <JobOpeningsModal
+        isOpen={showJobOpenings}
+        onClose={() => setShowJobOpenings(false)}
+        role={role}
+        onViewSkillGap={() => setShowJobOpenings(false)}
+      />
     </PageWrapper>
   );
 };
