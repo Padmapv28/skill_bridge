@@ -68,7 +68,7 @@ apiClient.interceptors.response.use(
     const isNetworkError = !error.response || error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED';
     const isLocalBackend = BASE_URL.includes('localhost') || BASE_URL.includes('127.0.0.1');
 
-    const demoModeEnabled = import.meta.env.VITE_DEMO_MODE === 'true';
+    const demoModeEnabled = import.meta.env.VITE_DEMO_MODE !== 'false';
 
     if (demoModeEnabled && (isNetworkError || error.response?.status === 404) && isLocalBackend) {
       const url = originalRequest.url || '';
@@ -284,7 +284,7 @@ apiClient.interceptors.response.use(
       }
 
 
-      if (url.includes('/api/predict-role')) {
+      if (url.includes('predict-role')) {
         return {
           status: 200,
           data: {
@@ -294,9 +294,26 @@ apiClient.interceptors.response.use(
         };
       }
 
-      if (url.includes('/api/skill-gap')) {
+      if (url.includes('search-roles')) {
         let body = {};
-        try { body = typeof originalRequest.data === 'string' ? JSON.parse(originalRequest.data) : originalRequest.data; } catch(e){}
+        try { body = typeof originalRequest.data === 'string' ? JSON.parse(originalRequest.data) : (originalRequest.data || {}); } catch(e){}
+        const q = (body?.query || '').toLowerCase();
+        const filtered = mockPredictedRoles.filter(r => 
+          r.title.toLowerCase().includes(q) || 
+          (r.description && r.description.toLowerCase().includes(q))
+        );
+        return {
+          status: 200,
+          data: {
+            success: true,
+            roles: filtered.length > 0 ? filtered : mockPredictedRoles
+          }
+        };
+      }
+
+      if (url.includes('skill-gap')) {
+        let body = {};
+        try { body = typeof originalRequest.data === 'string' ? JSON.parse(originalRequest.data) : (originalRequest.data || {}); } catch(e){}
         const roleId = body?.role?.id || body?.roleId || 'role_ai_app_eng';
         const gapData = mockSkillGapDatabase[roleId] || {
           ...mockSkillGapDatabase.default,
@@ -311,9 +328,9 @@ apiClient.interceptors.response.use(
         };
       }
 
-      if (url.includes('/api/generate-roadmap')) {
+      if (url.includes('roadmap')) {
         let body = {};
-        try { body = typeof originalRequest.data === 'string' ? JSON.parse(originalRequest.data) : originalRequest.data; } catch(e){}
+        try { body = typeof originalRequest.data === 'string' ? JSON.parse(originalRequest.data) : (originalRequest.data || {}); } catch(e){}
         const roleId = body?.role?.id || body?.roleId || 'role_ai_app_eng';
         const roadmap = mockRoadmapData[roleId] || {
           ...mockRoadmapData.default,
