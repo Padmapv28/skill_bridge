@@ -12,17 +12,22 @@ import {
   ChevronRight,
   Filter,
   FileText,
-  AlertCircle
+  AlertCircle,
+  Briefcase,
+  ExternalLink
 } from 'lucide-react';
 
 import PageWrapper from '../components/layout/PageWrapper';
 import OrbitingSpinner from '../components/common/OrbitingSpinner';
 import StateFallback from '../components/common/StateFallback';
+import JobOpeningsModal from '../components/jobs/JobOpeningsModal';
 import * as resumeApi from '../api/resume';
 import { sampleParsedResume } from '../api/mockData';
 import { useToast } from '../context/ToastContext';
 import { useResume } from '../context/ResumeContext';
 import { useVoiceAssistant } from '../context/VoiceContext';
+
+
 
 export const ResultsPage = () => {
   const location = useLocation();
@@ -54,6 +59,12 @@ export const ResultsPage = () => {
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [roleError, setRoleError] = useState('');
   const [retryCount, setRetryCount] = useState(0);
+  const [selectedRoleForJobs, setSelectedRoleForJobs] = useState(null);
+
+  const handleOpenJobs = (role) => {
+    setSelectedRoleForJobs(role);
+    speak(`Fetching current verified job openings for ${role.title}. I found active opportunities across LinkedIn, Indeed, Google Jobs, and leading tech companies.`);
+  };
 
   useEffect(() => {
     if (location.state?.resumeData) {
@@ -454,14 +465,25 @@ export const ResultsPage = () => {
                       ))}
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => handleViewSkillGap(role)}
-                      className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-brand-blue hover:bg-brand-blue-hover text-white font-semibold text-xs sm:text-sm shadow-glow-blue transition-all group focus-visible:ring-2 flex-shrink-0"
-                    >
-                      <span>View Skill Gap</span>
-                      <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-                    </button>
+                    <div className="flex items-center gap-2.5 flex-wrap flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenJobs(role)}
+                        className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-navy-850 hover:bg-navy-800 text-cyan-300 hover:text-cyan-200 border border-cyan-500/35 hover:border-cyan-400 font-semibold text-xs sm:text-sm transition-all shadow-sm group"
+                      >
+                        <Briefcase className="w-4 h-4 text-cyan-400 group-hover:scale-110 transition-transform" />
+                        <span>Live Openings & Apply</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleViewSkillGap(role)}
+                        className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-brand-blue hover:bg-brand-blue-hover text-white font-semibold text-xs sm:text-sm shadow-glow-blue transition-all group focus-visible:ring-2 flex-shrink-0"
+                      >
+                        <span>View Skill Gap</span>
+                        <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+                      </button>
+                    </div>
                   </div>
                 </motion.div>
               );
@@ -469,6 +491,14 @@ export const ResultsPage = () => {
           )}
         </div>
       )}
+
+      {/* Direct Job Openings Modal */}
+      <JobOpeningsModal
+        isOpen={!!selectedRoleForJobs}
+        onClose={() => setSelectedRoleForJobs(null)}
+        role={selectedRoleForJobs}
+        onViewSkillGap={handleViewSkillGap}
+      />
     </PageWrapper>
   );
 };
