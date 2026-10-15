@@ -99,7 +99,6 @@ async def update_skill_progress(
 
     now = datetime.now(timezone.utc)
     completed_at = now if body.status == ProgressStatusEnum.completed else None
-
     if not skill_doc:
         doc = {
             "roadmap_id": roadmap_id,
@@ -111,7 +110,15 @@ async def update_skill_progress(
             "updated_at": now,
         }
         await db.roadmap_progress.insert_one(doc)
-        return doc
+        return {
+            "roadmap_id": roadmap_id,
+            "phase_number": body.phase_number,
+            "skill_name": body.skill_name,
+            "status": body.status.value,
+            "completed_at": completed_at,
+            "updated_at": now,
+        }
+
 
     await db.roadmap_progress.update_one(
         {"_id": skill_doc["_id"]},
