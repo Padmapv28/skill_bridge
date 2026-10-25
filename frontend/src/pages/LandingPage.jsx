@@ -1,28 +1,23 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Sparkles, 
-  Upload, 
-  Compass, 
-  Target, 
-  Map, 
-  CheckCircle2, 
-  ArrowRight, 
-  TrendingUp, 
-  Cpu, 
-  ShieldCheck, 
+import {
+  Upload,
+  Compass,
+  Target,
+  Map,
+  CheckCircle2,
+  ArrowRight,
+  Cpu,
   Zap,
   Volume2,
-  Terminal,
   Activity,
   Search,
   FileCheck2,
-  Briefcase,
-  Layers,
   ChevronRight,
-  Loader2
+  Loader2,
 } from 'lucide-react';
+
 import PageWrapper from '../components/layout/PageWrapper';
 import InteractiveGuidedFlow from '../components/guide/InteractiveGuidedFlow';
 import { useResume } from '../context/ResumeContext';
@@ -31,15 +26,60 @@ import { sampleParsedResume } from '../api/mockData';
 import { searchRoles } from '../api/resume';
 
 const COMMON_ROLES = [
-  { id: 'ai-eng', title: 'AI Application Engineer', salary: '$190k - $225k', tags: ['Python', 'LLMs', 'RAG'] },
-  { id: 'cloud-arch', title: 'Staff Full-Stack Cloud Architect', salary: '$210k - $250k', tags: ['AWS', 'K8s', 'Distributed'] },
-  { id: 'platform-lead', title: 'Senior Platform Infrastructure Lead', salary: '$195k - $235k', tags: ['Go', 'Docker', 'CI/CD'] },
-  { id: 'ml-eng', title: 'Machine Learning Engineer', salary: '$180k - $215k', tags: ['PyTorch', 'MLOps', 'Transformers'] },
-  { id: 'fullstack-dev', title: 'Senior Full-Stack Developer', salary: '$160k - $195k', tags: ['React', 'Node.js', 'PostgreSQL'] },
-  { id: 'devops-lead', title: 'DevOps / SRE Lead', salary: '$175k - $210k', tags: ['Terraform', 'Kubernetes', 'Linux'] },
-  { id: 'data-scientist', title: 'Principal Data Scientist', salary: '$185k - $220k', tags: ['Statistics', 'Python', 'SQL'] },
-  { id: 'cyber-sec', title: 'Cloud Security Architect', salary: '$190k - $230k', tags: ['IAM', 'Zero-Trust', 'SOC2'] },
-  { id: 'frontend-lead', title: 'Lead Frontend Architect', salary: '$165k - $200k', tags: ['React 18', 'TypeScript', 'WebGL'] },
+  {
+    id: 'ai-eng',
+    title: 'AI Application Engineer',
+    salary: '$190k - $225k',
+    tags: ['Python', 'LLMs', 'RAG'],
+  },
+  {
+    id: 'cloud-arch',
+    title: 'Staff Full-Stack Cloud Architect',
+    salary: '$210k - $250k',
+    tags: ['AWS', 'K8s', 'Distributed'],
+  },
+  {
+    id: 'platform-lead',
+    title: 'Senior Platform Infrastructure Lead',
+    salary: '$195k - $235k',
+    tags: ['Go', 'Docker', 'CI/CD'],
+  },
+  {
+    id: 'ml-eng',
+    title: 'Machine Learning Engineer',
+    salary: '$180k - $215k',
+    tags: ['PyTorch', 'MLOps', 'Transformers'],
+  },
+  {
+    id: 'fullstack-dev',
+    title: 'Senior Full-Stack Developer',
+    salary: '$160k - $195k',
+    tags: ['React', 'Node.js', 'PostgreSQL'],
+  },
+  {
+    id: 'devops-lead',
+    title: 'DevOps / SRE Lead',
+    salary: '$175k - $210k',
+    tags: ['Terraform', 'Kubernetes', 'Linux'],
+  },
+  {
+    id: 'data-scientist',
+    title: 'Principal Data Scientist',
+    salary: '$185k - $220k',
+    tags: ['Statistics', 'Python', 'SQL'],
+  },
+  {
+    id: 'cyber-sec',
+    title: 'Cloud Security Architect',
+    salary: '$190k - $230k',
+    tags: ['IAM', 'Zero-Trust', 'SOC2'],
+  },
+  {
+    id: 'frontend-lead',
+    title: 'Lead Frontend Architect',
+    salary: '$165k - $200k',
+    tags: ['React 18', 'TypeScript', 'WebGL'],
+  },
 ];
 
 export const LandingPage = () => {
@@ -50,77 +90,128 @@ export const LandingPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const searchContainerRef = useRef(null);
-
-    const [activeRoles, setActiveRoles] = useState(COMMON_ROLES);
+  const [activeRoles, setActiveRoles] = useState(COMMON_ROLES);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState('');
 
-  // Debounced live AI role search across all industries
+  // Debounced live search. This effect is the only place that calls the API.
   useEffect(() => {
-    if (!searchQuery.trim()) {
+    const query = searchQuery.trim();
+    let cancelled = false;
+
+    if (!query) {
       setActiveRoles(COMMON_ROLES);
       setIsSearching(false);
-      return;
+      setSearchError('');
+      return undefined;
     }
 
+    // Hide sample roles while waiting for live results.
+    setActiveRoles([]);
+    setIsSearching(true);
+    setSearchError('');
+
     const timer = setTimeout(async () => {
-      setIsSearching(true);
       try {
-        const res = await searchRoles(searchQuery.trim());
-        if (res?.roles && res.roles.length > 0) {
+        const res = await searchRoles(query);
+
+        // Ignore responses belonging to an older search.
+        if (cancelled) return;
+
+        if (Array.isArray(res?.roles)) {
           setActiveRoles(res.roles);
+          setSearchError(
+            res.roles.length > 0
+              ? ''
+              : 'No matching roles found. Try another search.'
+          );
+        } else {
+          setActiveRoles([]);
+          setSearchError('Unexpected response from role search.');
         }
       } catch (err) {
-        console.warn('Live role search error:', err);
+        if (cancelled) return;
+
+        console.error('Live role search failed:', err);
+        setActiveRoles([]);
+        setSearchError('Unable to search roles. Please try again.');
       } finally {
-        setIsSearching(false);
+        if (!cancelled) {
+          setIsSearching(false);
+        }
       }
     }, 400);
 
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [searchQuery]);
 
-  const handleImmediateSearch = async () => {
-    if (!searchQuery.trim()) return;
-    setIsSearching(true);
+  // The debounced effect handles the API request.
+  // The Search button must not send a second request.
+  const handleImmediateSearch = () => {
+    const query = searchQuery.trim();
+
     setIsDropdownOpen(true);
-    try {
-      const res = await searchRoles(searchQuery.trim());
-      if (res?.roles && res.roles.length > 0) {
-        setActiveRoles(res.roles);
-        handleSelectRole(res.roles[0]);
-      }
-    } catch (err) {
-      console.warn('Search error:', err);
-    } finally {
-      setIsSearching(false);
+
+    if (!query) {
+      setActiveRoles([]);
+      setSearchError('Enter a role or career field to search.');
+      return;
     }
+
+    setSearchError('');
   };
-// Close dropdown on outside click
+
+  // Close dropdown when the user clicks outside it.
   useEffect(() => {
-    const handleOutsideClick = (e) => {
-      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target)) {
+    const handleOutsideClick = (event) => {
+      if (
+        searchContainerRef.current &&
+        !searchContainerRef.current.contains(event.target)
+      ) {
         setIsDropdownOpen(false);
       }
     };
+
     document.addEventListener('mousedown', handleOutsideClick);
-    return () => document.removeEventListener('mousedown', handleOutsideClick);
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
   }, []);
 
+  // Select a role and continue to resume upload.
   const handleSelectRole = (role) => {
     setSelectedRole(role);
     setIsDropdownOpen(false);
-    speak(`Target role selected: ${role.title}. Let's audit your skill gaps and market alignment.`);
-    navigate('/upload', { state: { role, roleTitle: role.title } });
+
+    speak(
+      `Target role selected: ${role.title}. Let's audit your skill gaps and market alignment.`
+    );
+
+    navigate('/upload', {
+      state: {
+        role,
+        roleTitle: role.title,
+      },
+    });
   };
 
+  // Open the existing sample demonstration.
   const handleQuickDemo = () => {
     setResume(sampleParsedResume);
-    speak("Loading interactive live demo profile with senior benchmarks.");
+
+    speak(
+      'Loading interactive live demo profile with senior benchmarks.'
+    );
+
     navigate('/results', {
       state: {
         resumeData: sampleParsedResume,
-        isSample: true
-      }
+        isSample: true,
+      },
     });
   };
 
@@ -128,47 +219,51 @@ export const LandingPage = () => {
     {
       icon: Cpu,
       title: 'Contextual Resume Intelligence',
-      description: 'Deep semantic parsing extracts hard skills, project impact, leadership signals, and domain mastery from PDF and DOCX resumes.',
+      description:
+        'Deep semantic parsing extracts hard skills, project impact, leadership signals, and domain mastery from PDF and DOCX resumes.',
       badge: 'In-Memory Parsing',
-      color: 'border-cyan-500/40 text-cyan-400'
+      color: 'border-cyan-500/40 text-cyan-400',
     },
     {
       icon: Compass,
       title: 'Predictive Role Matching',
-      description: 'Calculates multidimensional fit-scores against 500+ tech career specializations with explainable AI justifications and salary telemetry.',
+      description:
+        'Calculates multidimensional fit-scores against 500+ tech career specializations with explainable AI justifications and salary telemetry.',
       badge: 'Top 5 Predictions',
-      color: 'border-brand-blue/40 text-brand-blue-light'
+      color: 'border-brand-blue/40 text-brand-blue-light',
     },
     {
       icon: Target,
       title: 'Surgical Skill Gap Analysis',
-      description: 'Classifies competencies into matched, partial growth areas, and high-impact missing capabilities with visual match percentage rings.',
+      description:
+        'Classifies competencies into matched, partial growth areas, and high-impact missing capabilities with visual match percentage rings.',
       badge: 'Tri-Tier Classification',
-      color: 'border-amber-400/40 text-amber-400'
+      color: 'border-amber-400/40 text-amber-400',
     },
     {
       icon: Map,
       title: 'Personalized 3-Phase Roadmap',
-      description: 'Transforms identified gaps into structured, time-sequenced milestones (Foundation, Intermediate, Advanced) backed by curated courses.',
+      description:
+        'Transforms identified gaps into structured, time-sequenced milestones (Foundation, Intermediate, Advanced) backed by curated courses.',
       badge: 'Milestone Execution',
-      color: 'border-emerald-400/40 text-emerald-400'
+      color: 'border-emerald-400/40 text-emerald-400',
     },
   ];
 
   return (
     <PageWrapper className="pb-20">
-      {/* Hero Section with Kirmada & Search Bar */}
+      {/* Hero Section */}
       <section className="relative pt-8 pb-14 md:pt-14 md:pb-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto overflow-hidden">
-        {/* Ambient background glow effects */}
+        {/* Background glow effects */}
         <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] bg-cyan-500/10 rounded-full blur-[150px] pointer-events-none -z-10" />
         <div className="absolute top-1/3 right-10 w-[500px] h-[500px] bg-brand-blue/15 rounded-full blur-[130px] pointer-events-none -z-10" />
 
-        {/* Hero Title & Subheading */}
+        {/* Hero Title */}
         <div className="text-center max-w-3xl mx-auto space-y-4 mb-10">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-navy-900/90 border border-cyan-500/40 shadow-[0_0_20px_rgba(0,240,255,0.2)] backdrop-blur-md">
             <Activity className="w-4 h-4 text-cyan-400 animate-pulse" />
             <span className="text-xs font-mono font-bold text-cyan-300">
-              Meet Kirmada â€¢ Principal AI Career Architect
+              Meet Kirmada • Principal AI Career Architect
             </span>
           </div>
 
@@ -181,19 +276,23 @@ export const LandingPage = () => {
           </h1>
 
           <p className="text-slate-300 text-base sm:text-lg leading-relaxed max-w-2xl mx-auto font-sans">
-            Consult directly with Kirmada, your AI Career Architect. Search target job roles, upload your resume, evaluate ATS compatibility, and follow your customized 3-phase execution roadmap.
+            Consult directly with Kirmada, your AI Career Architect. Search
+            target job roles, upload your resume, evaluate ATS compatibility,
+            and follow your customized 3-phase execution roadmap.
           </p>
 
-          {/* Quick Trust Badges */}
+          {/* Trust Badges */}
           <div className="pt-2 flex flex-wrap items-center justify-center gap-6 text-xs font-mono text-slate-400">
             <span className="flex items-center gap-1.5">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
               96.8% Prediction Accuracy
             </span>
+
             <span className="flex items-center gap-1.5">
               <CheckCircle2 className="w-4 h-4 text-cyan-400" />
               500+ Tech Benchmarks
             </span>
+
             <span className="flex items-center gap-1.5">
               <Volume2 className="w-4 h-4 text-brand-blue-light" />
               Spoken English Consultation
@@ -201,22 +300,24 @@ export const LandingPage = () => {
           </div>
         </div>
 
-        {/* Task 1: Prominent Job Role Search Bar + Dual Entry Points */}
+        {/* Job Role Search */}
         <div className="max-w-2xl mx-auto mb-12 space-y-4">
           <div ref={searchContainerRef} className="relative">
             <div className="relative flex items-center">
               <Search className="w-5 h-5 text-cyan-400 absolute left-4 pointer-events-none" />
+
               <input
                 type="text"
                 value={searchQuery}
                 onFocus={() => setIsDropdownOpen(true)}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
+                onChange={(event) => {
+                  setSearchQuery(event.target.value);
                   setIsDropdownOpen(true);
                 }}
-                placeholder="Search target roles (e.g., AI Application Engineer, Cloud Architect, DevOps)..."
+                placeholder="Search target roles (e.g., Data Analyst, AI Engineer, Cloud Architect)..."
                 className="w-full pl-12 pr-28 py-4 rounded-2xl bg-navy-900/90 border border-cyan-500/40 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 text-white placeholder-slate-400 text-sm shadow-[0_0_30px_rgba(0,240,255,0.15)] transition-all outline-none"
               />
+
               <button
                 type="button"
                 onClick={handleImmediateSearch}
@@ -226,7 +327,7 @@ export const LandingPage = () => {
               </button>
             </div>
 
-            {/* Autocomplete Dropdown */}
+            {/* Search Results Dropdown */}
             <AnimatePresence>
               {isDropdownOpen && (
                 <motion.div
@@ -238,7 +339,7 @@ export const LandingPage = () => {
                   {activeRoles.length > 0 ? (
                     activeRoles.map((role) => (
                       <button
-                        key={role.id}
+                        key={role.id || role.title}
                         type="button"
                         onClick={() => handleSelectRole(role)}
                         className="w-full p-3.5 px-4 text-left hover:bg-navy-900/80 transition-colors flex items-center justify-between group"
@@ -247,18 +348,38 @@ export const LandingPage = () => {
                           <div className="font-heading font-bold text-sm text-white group-hover:text-cyan-300 transition-colors">
                             {role.title}
                           </div>
+
                           <div className="flex items-center gap-2">
-                            <span className="text-[11px] font-mono text-emerald-400">{role.salary}</span>
-                            <span className="text-[10px] text-slate-500">â€¢</span>
-                            <span className="text-[10px] font-mono text-slate-400">{role.tags.join(', ')}</span>
+                            <span className="text-[11px] font-mono text-emerald-400">
+                              {role.salary || 'Salary not specified'}
+                            </span>
+
+                            <span className="text-[10px] text-slate-500">
+                              •
+                            </span>
+
+                            <span className="text-[10px] font-mono text-slate-400">
+                              {Array.isArray(role.tags)
+                                ? role.tags.join(', ')
+                                : ''}
+                            </span>
                           </div>
                         </div>
+
                         <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-cyan-400 group-hover:translate-x-1 transition-all" />
                       </button>
                     ))
                   ) : (
                     <div className="p-4 text-center text-xs font-mono text-slate-400">
-                      Searching or type any career field (e.g. Mechanical Engineering, Nursing, Civil, Design, Finance).
+                      {isSearching ? (
+                        <span className="inline-flex items-center justify-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Searching live career roles with AI...
+                        </span>
+                      ) : (
+                        searchError ||
+                        'Type a career field to find matching roles.'
+                      )}
                     </div>
                   )}
                 </motion.div>
@@ -266,11 +387,15 @@ export const LandingPage = () => {
             </AnimatePresence>
           </div>
 
-          {/* Quick Dual Action Buttons */}
+          {/* Upload and ATS Buttons */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-2">
             <Link
               to="/upload"
-              onClick={() => speak("Navigating to Resume Upload. Let's parse your credentials.")}
+              onClick={() =>
+                speak(
+                  "Navigating to Resume Upload. Let's parse your credentials."
+                )
+              }
               className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-navy-950 font-heading font-bold text-sm shadow-[0_0_20px_rgba(0,240,255,0.4)] transition-all flex items-center justify-center gap-2"
             >
               <Upload className="w-4 h-4" />
@@ -279,20 +404,24 @@ export const LandingPage = () => {
 
             <Link
               to="/ats-score"
-              onClick={() => speak("Opening the ATS Evaluator. Compare your resume against any real-world job description.")}
+              onClick={() =>
+                speak(
+                  'Opening the ATS Evaluator. Compare your resume against any real-world job description.'
+                )
+              }
               className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-navy-900 hover:bg-navy-850 text-cyan-300 border border-cyan-500/40 font-heading font-semibold text-sm transition-colors flex items-center justify-center gap-2 shadow-md"
             >
               <FileCheck2 className="w-4 h-4 text-cyan-400" />
-              <span>Check ATS Score & Paste JD</span>
+              <span>Check ATS Score &amp; Paste JD</span>
             </Link>
           </div>
         </div>
 
-        {/* The Central Interactive Kirmada Guided Workflow */}
+        {/* Interactive Guided Workflow */}
         <InteractiveGuidedFlow />
       </section>
 
-      {/* Task 1: Dedicated "Check ATS Score" Showcase Section */}
+      {/* ATS Checker Showcase */}
       <section className="py-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
         <div className="p-8 sm:p-12 rounded-3xl bg-gradient-to-r from-navy-900 via-[#07132B] to-navy-900 border border-cyan-500/30 shadow-[0_0_35px_rgba(0,240,255,0.15)] relative overflow-hidden">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
@@ -307,18 +436,26 @@ export const LandingPage = () => {
               </h2>
 
               <p className="text-sm sm:text-base text-slate-300 font-sans max-w-2xl leading-relaxed">
-                Before submitting to job boards, paste the exact job description and test your resume. Our hybrid Sentence-Transformer + LLM engine provides matched keywords, missing requirements, and specific phrasing fixes.
+                Before submitting to job boards, paste the exact job
+                description and test your resume. Our hybrid
+                Sentence-Transformer + LLM engine provides matched keywords,
+                missing requirements, and specific phrasing fixes.
               </p>
 
               <div className="flex flex-wrap items-center gap-4 pt-2 text-xs font-mono text-slate-400">
                 <span className="flex items-center gap-1.5 text-emerald-400">
-                  <CheckCircle2 className="w-4 h-4" /> Semantic Embeddings
+                  <CheckCircle2 className="w-4 h-4" />
+                  Semantic Embeddings
                 </span>
+
                 <span className="flex items-center gap-1.5 text-cyan-300">
-                  <CheckCircle2 className="w-4 h-4" /> Sub-Score Breakdown
+                  <CheckCircle2 className="w-4 h-4" />
+                  Sub-Score Breakdown
                 </span>
+
                 <span className="flex items-center gap-1.5 text-amber-400">
-                  <CheckCircle2 className="w-4 h-4" /> Actionable Fixes
+                  <CheckCircle2 className="w-4 h-4" />
+                  Actionable Fixes
                 </span>
               </div>
             </div>
@@ -336,47 +473,55 @@ export const LandingPage = () => {
         </div>
       </section>
 
-      {/* Feature Showcase Grid */}
+      {/* Feature Showcase */}
       <section className="py-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
         <div className="text-center max-w-3xl mx-auto mb-14">
           <h2 className="text-xs font-mono font-bold uppercase tracking-widest text-cyan-400 mb-2">
             Engineered For Modern Tech Careers
           </h2>
+
           <h3 className="font-heading text-3xl sm:text-4xl font-bold text-white tracking-tight">
             From Raw Resume to Structured Mastery
           </h3>
+
           <p className="mt-3 text-slate-400 text-sm sm:text-base">
-            Every step eliminates ambiguity and provides direct, actionable telemetry for your growth.
+            Every step eliminates ambiguity and provides direct, actionable
+            telemetry for your growth.
           </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {features.map((f, i) => {
-            const Icon = f.icon;
+          {features.map((feature, index) => {
+            const Icon = feature.icon;
+
             return (
               <motion.div
-                key={i}
+                key={index}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ delay: i * 0.1, duration: 0.4 }}
+                transition={{ delay: index * 0.1, duration: 0.4 }}
                 className="glass-card glass-card-hover rounded-2xl p-6 flex flex-col justify-between border border-navy-750"
               >
                 <div>
                   <div className="flex items-center justify-between mb-4">
                     <div className="w-12 h-12 rounded-xl bg-navy-900 border border-navy-800 flex items-center justify-center shadow-md">
-                      <Icon className={`w-6 h-6 ${f.color.split(' ')[1]}`} />
+                      <Icon
+                        className={`w-6 h-6 ${feature.color.split(' ')[1]}`}
+                      />
                     </div>
+
                     <span className="text-[10px] font-mono font-semibold px-2.5 py-1 rounded-full bg-navy-900 text-slate-300 border border-navy-700">
-                      {f.badge}
+                      {feature.badge}
                     </span>
                   </div>
 
                   <h4 className="font-heading font-bold text-lg text-slate-100 mb-2">
-                    {f.title}
+                    {feature.title}
                   </h4>
+
                   <p className="text-slate-400 text-xs sm:text-sm leading-relaxed font-sans">
-                    {f.description}
+                    {feature.description}
                   </p>
                 </div>
 
@@ -390,13 +535,13 @@ export const LandingPage = () => {
         </div>
       </section>
 
-      {/* Final Interactive CTA Banner */}
+      {/* Final Call to Action */}
       <section className="pt-4 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto text-center">
         <div className="rounded-3xl bg-gradient-to-r from-navy-900 via-cyan-500/15 to-navy-900 border border-cyan-500/30 p-10 sm:p-16 shadow-[0_0_40px_rgba(0,240,255,0.2)] relative overflow-hidden">
           <div className="relative z-10 max-w-2xl mx-auto space-y-6">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/15 border border-cyan-500/40 text-cyan-400 text-xs font-mono">
               <Zap className="w-3.5 h-3.5" />
-              <span>Instant Analysis â€¢ Guided by Kirmada</span>
+              <span>Instant Analysis • Guided by Kirmada</span>
             </div>
 
             <h2 className="font-heading text-3xl sm:text-4xl font-extrabold text-white">
@@ -404,7 +549,8 @@ export const LandingPage = () => {
             </h2>
 
             <p className="text-slate-300 text-sm sm:text-base">
-              Upload your resume or let Kirmada guide your personalized learning roadmap in seconds.
+              Upload your resume or let Kirmada guide your personalized
+              learning roadmap in seconds.
             </p>
 
             <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -414,6 +560,7 @@ export const LandingPage = () => {
               >
                 Upload Resume Now
               </Link>
+
               <button
                 type="button"
                 onClick={handleQuickDemo}
@@ -430,6 +577,3 @@ export const LandingPage = () => {
 };
 
 export default LandingPage;
-
-
-
