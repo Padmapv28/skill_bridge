@@ -1,141 +1,371 @@
-# SkillBridge - AI-Powered Resume Analyzer and Career Roadmap Generator using LLM
+# SkillBridge – AI-Powered Resume Analysis & Career Guidance
 
-An AI-powered resume analysis platform: upload a resume, get predicted career roles, a skill gap analysis against a chosen role, and a personalized learning roadmap - all grounded in your actual resume data via a locally-hosted LLM (Ollama).
+SkillBridge is an AI-powered career guidance platform that helps users understand their professional profile, identify skill gaps, explore suitable career opportunities, and follow structured learning roadmaps.
 
-## Table of Contents
-- [Architecture](#architecture)
-- [Tech Stack](#tech-stack)
-- [Project Structure](#project-structure)
-- [Setup Instructions](#setup-instructions)
-- [API Overview](#api-overview)
-- [Team & Contributions](#team--contributions)
-- [Known Limitations](#known-limitations)
-- [Status](#status)
+The platform combines resume parsing, natural language processing, AI-based role prediction, skill gap analysis, and personalized course recommendations to support career development.
 
-## Architecture
+---
+
+## 1. Project Overview
+
+Choosing the right career path requires an understanding of existing skills, industry requirements, and the learning needed to bridge skill gaps.
+
+SkillBridge addresses this challenge by analyzing a user's resume and providing career-related insights through an integrated AI-powered workflow.
+
+The system helps users:
+
+- Upload and analyze resumes.
+- Extract structured information from resumes.
+- Identify relevant career roles based on resume content.
+- Compare existing skills with role-specific requirements.
+- Identify matched, partially matched, and missing skills.
+- Generate personalized learning roadmaps.
+- Discover relevant certification courses and learning resources.
+- Track progress through the recommended roadmap.
+
+## 2. Key Features
+
+### 2.1 Resume Upload and Analysis
+
+- Supports PDF and DOCX resume formats.
+- Extracts relevant information from uploaded resumes.
+- Processes resume information into structured data.
+- Identifies skills, education, experience, and project details.
+- Makes the extracted information available for subsequent career analysis.
+
+### 2.2 AI-Based Role Prediction
+
+- Analyzes the candidate's resume information.
+- Identifies relevant technical skills and professional experience.
+- Predicts suitable career roles based on the candidate's profile.
+- Provides role recommendations to support career exploration.
+
+### 2.3 Skill Gap Analysis
+
+- Evaluates the candidate's skills against the selected career role.
+- Classifies skills into:
+  - Matched Skills
+  - Partially Matched Skills
+  - Missing Skills
+- Calculates a skill match percentage.
+- Identifies areas that require further learning and improvement.
+
+### 2.4 Personalized Learning Roadmap
+
+- Generates a structured learning roadmap for the selected career role.
+- Organizes required learning into phases.
+- Provides a progression path based on identified skill gaps.
+- Supports roadmap progress tracking.
+
+### 2.5 Course Recommendations
+
+- Recommends learning resources relevant to identified skill gaps.
+- Includes certification-based and free learning resources.
+- Supports beginner and advanced learning levels.
+- Connects course suggestions with the recommended learning roadmap.
+
+### 2.6 Progress Tracking
+
+- Supports tracking of roadmap learning activities.
+- Records completed skills and learning progress.
+- Helps users monitor their progress towards career goals.
+
+## 3. System Architecture
+
+SkillBridge follows a modular client-server architecture.
 
 ```mermaid
-flowchart LR
-    A[Resume Upload<br/>PDF / DOCX] --> B[Resume Parser<br/>ml/src]
-    B --> C[Structured JSON<br/>skills, education, experience]
-    C --> D[Backend Orchestration<br/>FastAPI]
-    D --> E[MongoDB<br/>Users / Resumes / Predictions / Roadmaps]
-    D --> F[Ollama LLM<br/>llama3.2, local]
-    F --> G[Role Prediction]
-    F --> H[Skill Gap Analysis]
-    F --> I[Roadmap Generation]
-    G --> J[React Frontend]
-    H --> J
-    I --> J
+flowchart TD
+    A[User] --> B[React Frontend]
+    B --> C[FastAPI Backend]
+
+    C --> D[Resume Processing]
+    D --> E[Resume Data Extraction]
+    E --> F[Structured Resume Information]
+
+    F --> G[AI Role Prediction]
+    G --> H[Skill Gap Analysis]
+    H --> I[Personalized Roadmap]
+    I --> J[Course Recommendations]
+
+    C --> K[MongoDB Database]
+    G --> K
+    H --> K
+    I --> K
+
+    J --> L[Career Guidance Results]
+    K --> L
+    L --> B
 ```
 
-**Flow summary:**
-1. User registers/logs in (JWT authentication).
-2. Resume (PDF/DOCX) is uploaded, parsed into structured JSON by the resume parser, and stored in MongoDB linked to the user.
-3. The backend fetches that specific stored resume by ID and passes it into the AI services running on a local Ollama LLM instance.
-4. Role prediction, skill gap analysis, and roadmap generation are all grounded in that real resume data - not a shared default.
-5. Results are returned to the React frontend and displayed across dedicated pages.
+### Architecture Components
 
-## Tech Stack
-
-| Layer | Technology |
+| Component | Responsibility |
 |---|---|
-| Frontend | React, Vite, Tailwind CSS |
-| Backend API | FastAPI (Python), JWT auth (python-jose), bcrypt |
-| Database | MongoDB (Atlas, cloud-hosted) |
-| AI / LLM | Ollama (llama3.2, run locally) |
-| Resume Parsing | pdfplumber, PyMuPDF, pytesseract (OCR), spaCy (NER), rapidfuzz |
-| Testing | Manual + Swagger UI (interactive API testing) |
+| Frontend | User interface, resume upload, results, and progress display |
+| Backend | API handling, authentication, workflow coordination, and business logic |
+| ML / Resume Processing | Resume text extraction, structured parsing, and skill identification |
+| AI Services | Role prediction, skill gap analysis, and roadmap generation |
+| Database | Storage and retrieval of application data |
+| Ollama | Local language model inference for supported AI workflows |
 
+## 4. Technology Stack
 
-## Setup Instructions
+| Layer | Technologies |
+|---|---|
+| Frontend | React.js, Vite, JavaScript, Tailwind CSS |
+| Backend | Python, FastAPI |
+| Database | MongoDB |
+| AI / LLM | Ollama, Llama 3.2 |
+| Resume Processing | pdfplumber, PyMuPDF, python-docx, pytesseract |
+| NLP and Skill Matching | spaCy, RapidFuzz |
+| API Communication | REST APIs |
+| Version Control | Git and GitHub |
+
+## 5. AI and Machine Learning Components
+
+### Resume Parsing
+
+The resume-processing module extracts text from uploaded PDF and DOCX documents and converts the information into structured data.
+
+### Role Prediction
+
+The role prediction service analyzes resume information and generates suitable career-role recommendations using an LLM-based workflow.
+
+### Skill Gap Analysis
+
+The skill gap analyzer compares the candidate's profile with the competencies required for a selected role.
+
+The analysis classifies competencies as matched, partially matched, or missing and calculates the overall match percentage.
+
+### Roadmap Generation
+
+The roadmap service uses the selected career role and identified skill requirements to generate a structured learning plan.
+
+### Course Suggestions
+
+The course recommendation workflow provides relevant learning resources to help candidates address their skill gaps.
+
+## 6. Application Workflow
+
+```mermaid
+flowchart TD
+    A[User Registration / Login] --> B[Upload Resume]
+    B --> C[Resume Extraction and Parsing]
+    C --> D[Structured Resume Profile]
+    D --> E[AI-Based Role Prediction]
+    E --> F[Select Career Role]
+    F --> G[Skill Gap Analysis]
+    G --> H[Matched / Partial / Missing Skills]
+    H --> I[Generate Learning Roadmap]
+    I --> J[Course Recommendations]
+    J --> K[Track Learning Progress]
+```
+
+## 7. Project Structure
+
+The repository is organized into separate frontend, backend, and machine-learning components.
+
+```text
+skill_bridge/
+│
+├── backend/
+│   ├── app/
+│   │   ├── routes/
+│   │   └── services/
+│   ├── tests/
+│   ├── main.py
+│   └── requirements.txt
+│
+├── frontend/
+│   ├── src/
+│   │   ├── api/
+│   │   └── pages/
+│   └── package.json
+│
+├── ml/
+│   ├── resume_extractor.py
+│   ├── resume_parser.py
+│   ├── skills_taxonomy.json
+│   ├── main.py
+│   └── docs/
+│
+└── README.md
+```
+
+*Note: This is a high-level representation. Individual files and folders may vary as the project evolves.*
+
+## 8. Installation and Setup
 
 ### Prerequisites
-- Python 3.10+
-- Node.js 18+
-- [Ollama](https://ollama.com) installed locally, with the `llama3.2` model pulled (`ollama pull llama3.2`)
-- A MongoDB connection string (MongoDB Atlas free tier, or a local MongoDB instance)
 
-### 1. Clone the repository
+Install the following software before running the project:
+
+- Python
+- Node.js and npm
+- MongoDB
+- Ollama
+- Git
+
+### Step 1: Clone the Repository
+
 ```bash
 git clone https://github.com/Padmapv28/skill_bridge.git
 cd skill_bridge
 ```
 
-### 2. Backend setup
-```bash
+### Step 2: Backend Setup
+
+Open a terminal in the project directory.
+
+```powershell
 cd backend
-pip install -r requirements.txt
-```
-Create `backend/.env` from `backend/.env.example` and fill in your real MongoDB connection string and a JWT secret:
-```bash
-cp .env.example .env
+python -m venv venv
 ```
 
-Start Ollama (in its own terminal, if not already running):
-```bash
-ollama serve
+Activate the virtual environment:
+
+```powershell
+.\venv\Scripts\Activate.ps1
+```
+
+Install dependencies:
+
+```powershell
+pip install -r requirements.txt
 ```
 
 Start the backend:
-```bash
-python -m uvicorn main:app --reload
-```
-Backend runs at `http://127.0.0.1:8000`. Interactive API docs: `http://127.0.0.1:8000/docs`.
 
-### 3. Frontend setup
-```bash
-cd ../frontend
+```powershell
+python -m uvicorn main:app --port 8000 --workers 1
+```
+
+Backend address:
+
+```text
+http://localhost:8000
+```
+
+### Step 3: Frontend Setup
+
+Open another terminal:
+
+```powershell
+cd frontend
 npm install
 npm run dev
 ```
-Frontend runs at `http://localhost:5173`.
 
-### 4. Resume parser (ml module)
-The resume parser is called internally by the backend when a resume is uploaded. To test it standalone:
-```bash
-cd ../ml/src
-pip install -r requirements.txt
-python -m spacy download en_core_web_sm
-python main.py <path_to_resume.pdf>
+The frontend is generally available at:
+
+```text
+http://localhost:5173
 ```
 
-## API Overview
+### Step 4: Database Setup
 
-| Endpoint | Method | Purpose |
-|---|---|---|
-| `/api/register` | POST | Create a new account |
-| `/api/login` | POST | Authenticate, returns a JWT |
-| `/api/me` | GET | Get the current user's profile |
-| `/api/upload-resume` | POST | Upload and parse a resume |
-| `/api/resumes/{id}` | GET | Fetch a stored resume |
-| `/api/career/predict-roles` | GET | Predict roles for a resume (`resume_id` query param) |
-| `/api/career/skill-gap` | GET | Skill gap analysis (`resume_id`, `role` query params) |
-| `/api/career/roadmap` | GET | Generate a learning roadmap (`resume_id`, `role` query params) |
+Configure MongoDB according to the application's environment configuration.
 
-Full interactive documentation is available at `/docs` once the backend is running.
+Ensure that the backend can connect to the configured MongoDB instance before using the application.
 
-## Team & Contributions
+### Step 5: Ollama Setup
 
-| Member | Area | Key deliverables |
-|---|---|---|
-| **A** | Resume Parsing & Data Extraction | PDF/DOCX text extraction with OCR fallback, NLP-based structured parsing, 524-skill taxonomy matching, fuzzy section header detection, 26 sample resumes tested |
-| **B** | LLM / ML Pipeline | Ollama integration, role prediction, skill gap analysis, roadmap generation, Pydantic-validated JSON output with retry logic for reliability |
-| **C** | Backend, Database & Integration | FastAPI structure, JWT authentication, MongoDB schema and CRUD, orchestration connecting parsing to AI services |
-| **D** | Frontend & UI/UX | React application: landing, auth, resume upload, results, skill gap, and roadmap pages |
+Install and start Ollama.
 
-## Known Limitations
+Pull the models used by the project:
 
-- Severely irregular multi-column or infographic-style resumes may still interleave text from different columns during parsing.
-- OCR accuracy depends on scan quality and degrades on unusual fonts or heavily stylized templates.
-- Role prediction, skill gap, and roadmap generation are limited to roles present in the curated role-skills reference dataset.
-- Being a small local model, `llama3.2` occasionally requires an internal retry to produce valid JSON output; this trades a little latency for reliability.
-- No containerized one-command startup (Docker Compose) yet - the three services (backend, frontend, Ollama) are started manually per the setup instructions above.
+```bash
+ollama pull llama3.2:3b
+ollama pull llama3.2:1b
+```
 
-## Status
+Ensure Ollama is running and accessible to the backend.
 
-- Resume parsing pipeline: complete and tested.
-- LLM pipeline (role prediction, skill gap, roadmap): complete, tested with real resume data end-to-end.
-- Backend (auth, CRUD, orchestration): complete.
-- Frontend (all core pages): complete.
-- Full integration testing across multiple real resumes and documentation review: in progress.
+*Model selection and availability depend on the application's current configuration.*
+
+## 9. Running the Application
+
+Start the required services:
+
+1. Start MongoDB.
+2. Start Ollama.
+3. Start the FastAPI backend.
+4. Start the React frontend.
+
+Open the frontend in a browser and use the resume upload and career guidance workflows.
+
+## 10. Testing
+
+The backend includes automated tests for selected application workflows.
+
+Run the available backend tests from the backend directory:
+
+```bash
+python -m pytest -q
+```
+
+Testing should cover the relevant areas, including:
+
+- API request and response handling.
+- Resume processing.
+- Role prediction.
+- Skill gap analysis.
+- Roadmap generation.
+- Progress-related functionality.
+
+Test results depend on the current test environment and configured services.
+
+## 11. Security and Data Handling
+
+The application processes personal information contained in uploaded resumes.
+
+Important considerations include:
+
+- Protecting uploaded resume information.
+- Keeping database credentials and API configuration in environment variables.
+- Avoiding exposure of sensitive information in application logs.
+- Validating uploaded files and API inputs.
+- Applying appropriate authentication and authorization checks.
+- Restricting access to user-specific career information.
+
+The application should be reviewed and security-tested before production deployment.
+
+## 12. Project Advantages
+
+- **AI-Based Career Guidance:** Helps users explore suitable career opportunities.
+- **Personalized Skill Analysis:** Identifies the difference between existing and required skills.
+- **Structured Learning Path:** Provides a roadmap for improving professional competencies.
+- **Integrated Learning Resources:** Connects skill gaps with relevant courses.
+- **Modular Architecture:** Separates frontend, backend, resume processing, and AI services.
+- **Local LLM Support:** Uses Ollama-based inference for supported AI workflows.
+
+## 13. Current Project Scope
+
+SkillBridge integrates the following major workflows:
+
+1. Resume Upload and Parsing
+2. AI-Based Role Prediction
+3. Skill Gap Analysis
+4. Personalized Roadmap Generation
+5. Course Recommendations
+6. Learning Progress Tracking
+
+## 14. Future Enhancements
+
+Potential enhancements include:
+
+- Improved resume parsing for complex layouts.
+- Expanded role and skills coverage.
+- More comprehensive course recommendations.
+- Enhanced learning progress analytics.
+- Additional AI-assisted career guidance features.
+- Performance and deployment improvements.
+
+## 15. Repository
+
+**GitHub:** https://github.com/Padmapv28/skill_bridge
+
+---
+
+**SkillBridge – Bridging the Gap Between Skills and Career Opportunities.**
