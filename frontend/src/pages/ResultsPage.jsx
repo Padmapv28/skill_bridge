@@ -66,14 +66,22 @@ export const ResultsPage = () => {
     speak(`Fetching current verified job openings for ${role.title}. I found active opportunities across LinkedIn, Indeed, Google Jobs, and leading tech companies.`);
   };
 
+  // Sync the incoming resume only when navigation provides a new resume.
   useEffect(() => {
-    if (location.state?.resumeData) {
-      setResume(location.state.resumeData);
-      setResumeData(location.state.resumeData);
-    } else if (parsedResume && !resumeData) {
+    const incomingResume = location.state?.resumeData;
+
+    if (!incomingResume) return;
+
+    setResume(incomingResume);
+    setResumeData(incomingResume);
+  }, [location.state?.resumeData]);
+
+  // Use the saved context resume when no new resume comes from navigation.
+  useEffect(() => {
+    if (!location.state?.resumeData && parsedResume && !resumeData) {
       setResumeData(parsedResume);
     }
-  }, [location.state?.resumeData, parsedResume]);
+  }, [location.state?.resumeData, parsedResume, resumeData]);
 
   useEffect(() => {
     if (!resumeData) return;

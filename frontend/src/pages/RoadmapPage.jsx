@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import confetti from 'canvas-confetti';
@@ -74,6 +74,8 @@ export const RoadmapPage = () => {
   const [courseSuggestions, setCourseSuggestions] = useState({});
   const [coursesLoading, setCoursesLoading] = useState(false);
   const [coursesError, setCoursesError] = useState('');
+  // Reuse an in-flight roadmap request when React re-runs this effect in development.
+  const roadmapRequestRef = useRef(null);
   const roleTitleOf = (value) => typeof value === 'string' ? value.trim() : String(value?.title || value?.role || value?.name || '').trim();
   const roleTitle = roleTitleOf(role);
   const displayTimeline = roadmap?.targetTimeline || roadmap?.target_timeline || '12 weeks';
@@ -137,12 +139,40 @@ export const RoadmapPage = () => {
       setIsLoading(true);
       setRoadmapError('');
       try {
-        const response = await resumeApi.generateRoadmap({
-          role: roleTitle,
-          resumeData,
-          missingSkills,
-          partialSkills,
-        });
+        const previousRequest = roadmapRequestRef.current;
+        const isSameRequest =
+          previousRequest &&
+          previousRequest.roleTitle === roleTitle &&
+          previousRequest.resumeData === resumeData &&
+          previousRequest.missingSkills === missingSkills &&
+          previousRequest.partialSkills === partialSkills &&
+          previousRequest.retryAttempt === retryAttempt;
+
+        let requestPromise;
+
+        if (isSameRequest) {
+          // A second effect setup can reuse the first request instead of
+          // starting another expensive Ollama roadmap generation.
+          requestPromise = previousRequest.promise;
+        } else {
+          requestPromise = resumeApi.generateRoadmap({
+            role: roleTitle,
+            resumeData,
+            missingSkills,
+            partialSkills,
+          });
+
+          roadmapRequestRef.current = {
+            roleTitle,
+            resumeData,
+            missingSkills,
+            partialSkills,
+            retryAttempt,
+            promise: requestPromise,
+          };
+        }
+
+        const response = await requestPromise;
         const generated = response.roadmap;
         if (!generated || !Array.isArray(generated.phases) || generated.phases.length === 0) {
           throw new Error('The backend did not return a valid roadmap.');
@@ -582,9 +612,9 @@ export const RoadmapPage = () => {
                         </h3>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                          {phase.courses.map((course) => (
+                          {phase.courses.map((course, courseIndex) => (
                             <div
-                              key={course.id}
+                              key={course.id || `${course.title || 'course'}-${courseIndex}`}
                               className="p-4 rounded-2xl bg-navy-900/90 border border-navy-750 hover:border-brand-blue/50 flex flex-col justify-between transition-all group"
                             >
                               <div className="space-y-2 mb-4">

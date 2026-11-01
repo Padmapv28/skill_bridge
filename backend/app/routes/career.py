@@ -1,8 +1,11 @@
 """Authenticated career analysis endpoints and public JSON ATS endpoint."""
+
+import asyncio
+import hashlib
+import json
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
-import logging
-import traceback
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
@@ -18,11 +21,40 @@ from app.services.ats_scorer import score_ats
 from app.services.role_search import search_roles as search_roles_service
 from app.utils.security import get_current_user
 
+
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+# Prevent duplicate skill-gap analysis requests for the same user and role.
+# This is process-local and is intended for the single-worker setup.
+_skill_gap_locks: Dict[str, asyncio.Lock] = {}
+
+
+def _get_skill_gap_lock(user_id: str, role: str) -> asyncio.Lock:
+    key = f"{user_id}:{role.strip().casefold()}"
+
+    if key not in _skill_gap_locks:
+        _skill_gap_locks[key] = asyncio.Lock()
+
+    return _skill_gap_locks[key]
+
+
+def _resume_fingerprint(resume: dict) -> str:
+    """Generate a stable fingerprint for the uploaded resume."""
+    serialized = json.dumps(
+        resume,
+        sort_keys=True,
+        ensure_ascii=False,
+        default=str,
+    )
+
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
 @router.post("/search-roles")
 async def search_roles_api(request: Dict[str, Any]):
     """Public role search used by the landing page."""
+
     query = str(
         request.get("query")
         or request.get("searchQuery")
@@ -35,13 +67,12 @@ async def search_roles_api(request: Dict[str, Any]):
         return {"roles": []}
 
     try:
-        roles = await run_in_threadpool(
-            search_roles_service,
-            query,
-        )
+        roles = await run_in_threadpool(search_roles_service, query)
         return {"roles": roles}
+
     except Exception as exc:
         logger.exception("Live role search failed")
+
         raise HTTPException(
             status_code=500,
             detail="Unable to search career roles right now.",
@@ -56,27 +87,57 @@ class ResumePredictionRequest(BaseModel):
 
 def _role_name(role: Any) -> str:
     if isinstance(role, dict):
-        role = role.get("title") or role.get("role") or role.get("name")
+        role = (
+            role.get("title")
+            or role.get("role")
+            or role.get("name")
+        )
+
     return str(role or "").strip()
 
 
-async def _current_resume(user_id: str, supplied: Optional[dict] = None) -> dict:
-    """Prefer the authenticated user's server-side uploaded resume."""
-    session = await db.user_sessions.find_one({"user_id": user_id})
+async def _current_resume(
+    user_id: str,
+    supplied: Optional[dict] = None,
+) -> dict:
+    """
+    Prefer the authenticated user's server-side uploaded resume.
+
+    Client-supplied resume data is intentionally not used here.
+    """
+    session = await db.user_sessions.find_one({
+        "user_id": user_id
+    })
+
     saved = (session or {}).get("resume") or {}
-    parsed = saved.get("parsed_data") or saved.get("parsedData")
+
+    parsed = (
+        saved.get("parsed_data")
+        or saved.get("parsedData")
+    )
+
     if isinstance(parsed, dict) and parsed:
         return parsed
-    # The authenticated main pipeline must use the resume uploaded to this
-    # account's server-side session. Do not accept stale browser state here.
+
     raise HTTPException(
         status_code=409,
-        detail="No resume is available for this account. Upload a resume first.",
+        detail=(
+            "No resume is available for this account. "
+            "Upload a resume first."
+        ),
     )
 
 
-async def _save_session_fields(user_id: str, fields: dict) -> None:
-    fields = {**fields, "updated_at": datetime.now(timezone.utc), "user_id": user_id}
+async def _save_session_fields(
+    user_id: str,
+    fields: dict,
+) -> None:
+    fields = {
+        **fields,
+        "updated_at": datetime.now(timezone.utc),
+        "user_id": user_id,
+    }
+
     await db.user_sessions.update_one(
         {"user_id": user_id},
         {"$set": fields},
@@ -90,27 +151,58 @@ async def predict_roles_api(
     current_user: dict = Depends(get_current_user),
 ):
     user_id = str(current_user["_id"])
-    resume = await _current_resume(user_id, request.resume)
-    target_role = (request.targetRole or request.target_role or "").strip() or None
+
+    resume = await _current_resume(
+        user_id,
+        request.resume,
+    )
+
+    target_role = (
+        request.targetRole
+        or request.target_role
+        or ""
+    ).strip() or None
+
     try:
-        logger.info("Predicting roles for authenticated user %s", user_id)
-        result = await run_in_threadpool(predict_roles, resume, target_role)
-        await _save_session_fields(user_id, {
-            "predictions": result,
-            "target_role": target_role,
-            "selected_role": None,
-            "skill_gap": None,
-            "roadmap": None,
-            "roadmap_id": None,
-        })
+        logger.info(
+            "Predicting roles for authenticated user %s",
+            user_id,
+        )
+
+        result = await run_in_threadpool(
+            predict_roles,
+            resume,
+            target_role,
+        )
+
+        await _save_session_fields(
+            user_id,
+            {
+                "predictions": result,
+                "target_role": target_role,
+                "selected_role": None,
+                "skill_gap": None,
+                "skill_gap_fingerprint": None,
+                "roadmap": None,
+                "roadmap_id": None,
+            },
+        )
+
         if target_role:
             result["target_role"] = target_role
+
         return result
+
     except HTTPException:
         raise
+
     except Exception as exc:
         logger.exception("Role prediction failed")
-        raise HTTPException(status_code=500, detail=f"Role prediction failed: {exc}") from exc
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Role prediction failed: {exc}",
+        ) from exc
 
 
 @router.post("/skill-gap")
@@ -119,24 +211,103 @@ async def skill_gap_api(
     current_user: dict = Depends(get_current_user),
 ):
     user_id = str(current_user["_id"])
+
     role = request.get("role")
-    if not _role_name(role):
-        raise HTTPException(status_code=400, detail="Role is required.")
-    resume = await _current_resume(user_id, request.get("resume"))
+    role_name = _role_name(role)
+
+    if not role_name:
+        raise HTTPException(
+            status_code=400,
+            detail="Role is required.",
+        )
+
+    # Always use the authenticated user's uploaded resume.
+    resume = await _current_resume(
+        user_id,
+        request.get("resume"),
+    )
+
+    resume_hash = _resume_fingerprint(resume)
+
+    lock = _get_skill_gap_lock(
+        user_id,
+        role_name,
+    )
+
     try:
-        result = await run_in_threadpool(analyze_skill_gap, role, resume)
-        await _save_session_fields(user_id, {
-            "selected_role": _role_name(role),
-            "skill_gap": result,
-            "roadmap": None,
-            "roadmap_id": None,
-        })
-        return result
+        async with lock:
+
+            # Recheck the session after acquiring the lock.
+            # Another request may have completed the analysis already.
+            session = await db.user_sessions.find_one({
+                "user_id": user_id
+            })
+
+            if session:
+                saved_result = session.get("skill_gap")
+
+                saved_role = str(
+                    session.get("selected_role") or ""
+                ).strip().casefold()
+
+                saved_fingerprint = session.get(
+                    "skill_gap_fingerprint"
+                )
+
+                if (
+                    isinstance(saved_result, dict)
+                    and saved_role == role_name.casefold()
+                    and saved_fingerprint == resume_hash
+                ):
+                    logger.info(
+                        "Returning cached skill-gap analysis "
+                        "for user %s and role %s",
+                        user_id,
+                        role_name,
+                    )
+
+                    return saved_result
+
+            logger.info(
+                "Starting skill-gap analysis for user %s and role %s",
+                user_id,
+                role_name,
+            )
+
+            result = await run_in_threadpool(
+                analyze_skill_gap,
+                role_name,
+                resume,
+            )
+
+            if not isinstance(result, dict):
+                raise ValueError(
+                    "Skill-gap analyzer returned an invalid response."
+                )
+
+            await _save_session_fields(
+                user_id,
+                {
+                    "selected_role": role_name,
+                    "skill_gap": result,
+                    "skill_gap_fingerprint": resume_hash,
+                    "roadmap": None,
+                    "roadmap_id": None,
+                },
+            )
+
+            return result
+
     except HTTPException:
         raise
+
     except Exception as exc:
         logger.exception("Skill-gap analysis failed")
-        raise HTTPException(status_code=500, detail=f"Skill gap analysis failed: {exc}") from exc
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Skill gap analysis failed: {exc}",
+        ) from exc
 
 
 @router.post("/roadmap")
@@ -145,10 +316,20 @@ async def roadmap_api(
     current_user: dict = Depends(get_current_user),
 ):
     user_id = str(current_user["_id"])
+
     role = request.get("role")
+
     if not _role_name(role):
-        raise HTTPException(status_code=400, detail="Role is required.")
-    resume = await _current_resume(user_id, request.get("resume"))
+        raise HTTPException(
+            status_code=400,
+            detail="Role is required.",
+        )
+
+    resume = await _current_resume(
+        user_id,
+        request.get("resume"),
+    )
+
     missing_skills = request.get("missingSkills", [])
     partial_skills = request.get("partialSkills", [])
 
@@ -163,16 +344,34 @@ async def roadmap_api(
 
         roadmap_id = str(ObjectId())
         now = datetime.now(timezone.utc)
+
         progress_docs = []
-        for phase_index, phase in enumerate(result.get("phases", []), start=1):
-            phase_number = phase.get("phase", phase.get("phase_number", phase_index))
+
+        for phase_index, phase in enumerate(
+            result.get("phases", []),
+            start=1,
+        ):
+            phase_number = phase.get(
+                "phase",
+                phase.get("phase_number", phase_index),
+            )
+
             try:
                 phase_number = int(phase_number)
             except (TypeError, ValueError):
                 phase_number = phase_index
+
             for skill in phase.get("skills", []) or []:
-                skill_name = skill.get("name") if isinstance(skill, dict) else skill
-                skill_name = str(skill_name or "").strip()
+                skill_name = (
+                    skill.get("name")
+                    if isinstance(skill, dict)
+                    else skill
+                )
+
+                skill_name = str(
+                    skill_name or ""
+                ).strip()
+
                 if skill_name:
                     progress_docs.append({
                         "user_id": user_id,
@@ -185,20 +384,34 @@ async def roadmap_api(
                     })
 
         if progress_docs:
-            await db.roadmap_progress.insert_many(progress_docs, ordered=False)
+            await db.roadmap_progress.insert_many(
+                progress_docs,
+                ordered=False,
+            )
 
         result["roadmap_id"] = roadmap_id
-        await _save_session_fields(user_id, {
-            "selected_role": _role_name(role),
-            "roadmap": result,
-            "roadmap_id": roadmap_id,
-        })
+
+        await _save_session_fields(
+            user_id,
+            {
+                "selected_role": _role_name(role),
+                "roadmap": result,
+                "roadmap_id": roadmap_id,
+            },
+        )
+
         return result
+
     except HTTPException:
         raise
+
     except Exception as exc:
         logger.exception("Roadmap generation failed")
-        raise HTTPException(status_code=500, detail=f"Roadmap generation failed: {exc}") from exc
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Roadmap generation failed: {exc}",
+        ) from exc
 
 
 @router.post("/course-suggestions")
@@ -207,52 +420,123 @@ async def course_suggestions_api(
     current_user: dict = Depends(get_current_user),
 ):
     role_name = _role_name(request.get("role"))
+
     if not role_name:
-        raise HTTPException(status_code=400, detail="Role is required.")
+        raise HTTPException(
+            status_code=400,
+            detail="Role is required.",
+        )
 
     def extract_names(items):
-        names, seen = [], set()
+        names = []
+        seen = set()
+
         for item in items or []:
-            name = item.get("name") if isinstance(item, dict) else item
+            name = (
+                item.get("name")
+                if isinstance(item, dict)
+                else item
+            )
+
             name = str(name or "").strip()
             key = name.casefold()
+
             if name and key not in seen:
                 seen.add(key)
                 names.append(name)
+
         return names
 
-    missing = extract_names(request.get("missingSkills", []))
-    partial = extract_names(request.get("partialSkills", []))
-    skills = list(dict.fromkeys(missing + partial))[:4]
+    missing = extract_names(
+        request.get("missingSkills", [])
+    )
+
+    partial = extract_names(
+        request.get("partialSkills", [])
+    )
+
+    skills = list(
+        dict.fromkeys(missing + partial)
+    )[:4]
+
     if not skills:
-        return {"role": role_name, "missing_skills": [], "partial_skills": [], "course_suggestions": {}}
+        return {
+            "role": role_name,
+            "missing_skills": [],
+            "partial_skills": [],
+            "course_suggestions": {},
+        }
 
     try:
-        course_map = await run_in_threadpool(recommend_courses, skills)
+        course_map = await run_in_threadpool(
+            recommend_courses,
+            skills,
+        )
+
         return {
             "role": role_name,
             "missing_skills": missing,
             "partial_skills": partial,
             "course_suggestions": course_map,
         }
+
     except Exception as exc:
         logger.exception("Course recommendations failed")
-        raise HTTPException(status_code=500, detail=f"Course suggestion generation failed: {exc}") from exc
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Course suggestion generation failed: {exc}",
+        ) from exc
 
 
 @router.post("/ats-score")
 async def ats_score_api(request: Dict[str, Any]):
-    """ATS score from already-parsed resume JSON and raw job-description text."""
-    resume = request.get("resume") or request.get("resumeData") or request.get("resume_data")
-    jd_text = request.get("jdText") or request.get("jd_text") or ""
+    """
+    ATS score from already-parsed resume JSON
+    and raw job-description text.
+    """
+
+    resume = (
+        request.get("resume")
+        or request.get("resumeData")
+        or request.get("resume_data")
+    )
+
+    jd_text = (
+        request.get("jdText")
+        or request.get("jd_text")
+        or ""
+    )
+
     if not resume:
-        raise HTTPException(status_code=400, detail="Resume data is required.")
+        raise HTTPException(
+            status_code=400,
+            detail="Resume data is required.",
+        )
+
     if not jd_text.strip():
-        raise HTTPException(status_code=400, detail="Job description text is required.")
+        raise HTTPException(
+            status_code=400,
+            detail="Job description text is required.",
+        )
+
     try:
-        return await run_in_threadpool(score_ats, resume, jd_text)
+        return await run_in_threadpool(
+            score_ats,
+            resume,
+            jd_text,
+        )
+
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
     except Exception as exc:
         logger.exception("ATS scoring failed")
-        raise HTTPException(status_code=500, detail=f"ATS scoring failed: {exc}") from exc
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"ATS scoring failed: {exc}",
+        ) from exc
