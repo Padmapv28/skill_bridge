@@ -4,8 +4,12 @@ import re
 from .ollama_client import FAST_MODEL, generate
 
 
+# ============================================================
+# TEXT UTILITIES
+# ============================================================
+
 def normalize_text(value):
-    """Normalize text for safe skill comparison."""
+    """Normalize text for comparisons."""
     if value is None:
         return ""
 
@@ -16,16 +20,35 @@ def normalize_text(value):
     ).strip()
 
 
+def compact_list(value, limit=5, chars=600):
+    """Convert resume sections into compact text for Ollama."""
+    if not value:
+        return []
+
+    if isinstance(value, str):
+        return [value[:chars]]
+
+    if isinstance(value, dict):
+        value = [value]
+
+    if not isinstance(value, list):
+        return [str(value)[:chars]]
+
+    result = []
+
+    for item in value[:limit]:
+        if isinstance(item, dict):
+            item = json.dumps(item, ensure_ascii=False)
+        else:
+            item = str(item)
+
+        result.append(item[:chars])
+
+    return result
+
+
 def extract_candidate_skills(resume):
-    """
-    Extract skills from the CURRENT uploaded resume.
-
-    Supports:
-    - list of strings
-    - dictionary of skill categories
-    - list of skill dictionaries
-    """
-
+    """Extract skills explicitly present in the resume."""
     skills = resume.get("skills", [])
 
     if isinstance(skills, dict):
@@ -56,56 +79,18 @@ def extract_candidate_skills(resume):
         if not skill:
             continue
 
-        skill_text = str(skill).strip()
-        normalized = normalize_text(skill_text)
+        skill = str(skill).strip()
+        key = normalize_text(skill)
 
-        if normalized and normalized not in seen:
-            seen.add(normalized)
-            cleaned.append(skill_text)
+        if key and key not in seen:
+            seen.add(key)
+            cleaned.append(skill)
 
     return cleaned
 
 
-def compact_list(value, limit=5, chars=500):
-    """
-    Keep resume information small enough for the local model.
-    """
-
-    if not value:
-        return []
-
-    if isinstance(value, str):
-        return [value[:chars]]
-
-    if not isinstance(value, list):
-        return [str(value)[:chars]]
-
-    result = []
-
-    for item in value[:limit]:
-        if isinstance(item, dict):
-            text = json.dumps(
-                item,
-                ensure_ascii=False
-            )
-        else:
-            text = str(item)
-
-        result.append(text[:chars])
-
-    return result
-
-
 def build_current_resume(resume):
-    """
-    Build a compact representation of ONLY the current uploaded resume.
-
-    No previous resume.
-    No test resume.
-    No hardcoded candidate.
-    """
-
-    skills = extract_candidate_skills(resume)
+    """Build the resume context sent to the AI model."""
 
     return {
         "name": (
@@ -113,46 +98,133 @@ def build_current_resume(resume):
             or resume.get("name")
             or "Candidate"
         ),
-
         "summary": str(
             resume.get("summary")
             or resume.get("professionalSummary")
             or resume.get("headline")
             or ""
-        )[:1200],
+        )[:1500],
 
-        "skills": skills[:30],
+        "skills": extract_candidate_skills(resume)[:40],
 
         "education": compact_list(
             resume.get("education", []),
-            limit=4,
-            chars=500
+            limit=5,
+            chars=600
         ),
 
         "experience": compact_list(
             resume.get("experience", []),
-            limit=5,
-            chars=600
+            limit=8,
+            chars=900
         ),
 
         "projects": compact_list(
             resume.get("projects", []),
-            limit=5,
-            chars=600
+            limit=8,
+            chars=700
         ),
 
         "certifications": compact_list(
             resume.get("certifications", []),
-            limit=5,
-            chars=400
+            limit=8,
+            chars=500
         )
     }
 
 
+# ============================================================
+# RESUME DOMAIN CONTEXT
+# ============================================================
+
+def detect_resume_domain(resume):
+    """
+    Identify the candidate's likely professional domain.
+
+    This is context for the LLM, not a hardcoded role filter.
+    """
+
+    blob = json.dumps(
+        resume or {},
+        ensure_ascii=False
+    ).lower()
+
+    patterns = {
+        "pharmacovigilance": (
+            r"pharmacovigilance|drug safety|safety science|"
+            r"\bicsr\b|meddra|adverse event|adverse drug reaction|"
+            r"\bargus\b|\barisg\b|veva qms|ich e2|\bgvp\b|"
+            r"\bpsur\b|\bdsur\b|causality assessment|"
+            r"clinical pharmacist|\bpharm\.?d\b"
+        ),
+
+        "healthcare": (
+            r"clinical research|clinical trial|medical reviewer|"
+            r"clinical pharmacist|patient care|healthcare|"
+            r"medical coding|doctor of pharmacy|hospital"
+        ),
+
+        "civil_engineering": (
+            r"civil engineering|structural engineering|autocad|"
+            r"staad pro|revit|etabs|quantity surveying|"
+            r"construction management|site engineer"
+        ),
+
+        "finance": (
+            r"accounting|financial analysis|bookkeeping|taxation|"
+            r"auditing|financial reporting|investment analysis|"
+            r"accounts payable|accounts receivable"
+        ),
+
+        "human_resources": (
+            r"human resources|talent acquisition|recruitment|"
+            r"employee relations|payroll|learning and development|"
+            r"hr operations"
+        ),
+
+        "marketing": (
+            r"digital marketing|seo|sem|social media marketing|"
+            r"brand management|content marketing|market research"
+        ),
+
+        "business_analytics": (
+            r"business analyst|business analysis|"
+            r"requirements analysis|power bi|business intelligence|"
+            r"data analytics|advanced excel|stakeholder reporting"
+        ),
+
+        "software_engineering": (
+            r"software engineer|software developer|backend developer|"
+            r"frontend developer|react|javascript|typescript|"
+            r"fastapi|flask|node\.js|docker|kubernetes|rest api"
+        )
+    }
+
+    # More specific domains are checked first.
+    priority = [
+        "pharmacovigilance",
+        "healthcare",
+        "civil_engineering",
+        "finance",
+        "human_resources",
+        "marketing",
+        "business_analytics",
+        "software_engineering"
+    ]
+
+    for domain in priority:
+        if re.search(patterns[domain], blob):
+            return domain
+
+    return "general"
+
+
+# ============================================================
+# OLLAMA RESPONSE PARSING
+# ============================================================
+
 def clean_model_response(response):
-    """
-    Convert Ollama output into a Python dictionary.
-    """
+    """Parse Ollama JSON output safely."""
 
     if isinstance(response, dict):
         return response
@@ -165,7 +237,6 @@ def clean_model_response(response):
     if not text:
         raise ValueError("Ollama returned an empty response.")
 
-    # Remove markdown code fences if Ollama adds them.
     text = re.sub(
         r"^```(?:json)?\s*",
         "",
@@ -173,65 +244,66 @@ def clean_model_response(response):
         flags=re.IGNORECASE
     )
 
-    text = re.sub(
-        r"\s*```$",
-        "",
-        text
-    ).strip()
+    text = re.sub(r"\s*```$", "", text).strip()
 
-    # Try complete JSON first.
     try:
         return json.loads(text)
+
     except json.JSONDecodeError:
         pass
 
-    # Try extracting the JSON object.
     start = text.find("{")
     end = text.rfind("}")
 
-    if start != -1 and end > start:
-        possible_json = text[start:end + 1]
+    if start == -1 or end <= start:
+        raise ValueError(
+            f"Ollama did not return valid JSON: {text[:500]}"
+        )
 
-        try:
-            return json.loads(possible_json)
-        except json.JSONDecodeError as error:
-            raise ValueError(
-                "Ollama returned incomplete or invalid JSON."
-            ) from error
+    try:
+        return json.loads(text[start:end + 1])
 
-    raise ValueError(
-        f"Ollama returned invalid JSON: {text[:1000]}"
-    )
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            "Ollama returned malformed or incomplete JSON."
+        ) from exc
 
 
-def validate_predictions(result, candidate_skills):
+# ============================================================
+# VALIDATION
+# ============================================================
+
+
+def validate_predictions(
+    result,
+    candidate_skills,
+    target_role=None,
+    current_resume=None,
+    domain=None
+):
     """
-    Validate AI-generated predictions.
-
-    IMPORTANT:
-    This function does NOT select career roles.
-    Ollama selects the roles, freely, based on the resume.
-
-    It only validates the response and prevents
-    invented key skills.
+    Validate LLM-generated career predictions using resume evidence.
+    Does not generate or replace AI predictions.
     """
 
     if not isinstance(result, dict):
-        raise ValueError(
-            "AI response must be a JSON object."
-        )
+        raise ValueError("AI response must be a JSON object.")
 
     predictions = result.get("predictions")
 
     if not isinstance(predictions, list):
-        raise ValueError(
-            "AI response does not contain a valid predictions list."
-        )
+        raise ValueError("AI response does not contain a predictions list.")
 
     if len(predictions) < 5:
         raise ValueError(
-            f"Ollama returned only {len(predictions)} predictions."
+            f"AI returned only {len(predictions)} roles. Five are required."
         )
+
+    resume_text = normalize_text(
+        json.dumps(current_resume or {}, ensure_ascii=False)
+    )
+
+    domain_text = normalize_text(domain or "")
 
     candidate_normalized = [
         normalize_text(skill)
@@ -241,14 +313,12 @@ def validate_predictions(result, candidate_skills):
     cleaned = []
     seen_roles = set()
 
-    for item in predictions[:5]:
+    for item in predictions:
 
         if not isinstance(item, dict):
             continue
 
-        role = str(
-            item.get("role", "")
-        ).strip()
+        role = str(item.get("role", "")).strip()
 
         if not role:
             continue
@@ -258,460 +328,427 @@ def validate_predictions(result, candidate_skills):
         if role_key in seen_roles:
             continue
 
-        seen_roles.add(role_key)
-
         try:
-            fit_score = int(
-                item.get("fit_score", 0)
-            )
+            score = float(item.get("fit_score"))
         except (TypeError, ValueError):
-            fit_score = 0
+            raise ValueError(f"Invalid AI fit score for role: {role}")
 
-        fit_score = max(
-            0,
-            min(100, fit_score)
-        )
+        if not 0 <= score <= 100:
+            raise ValueError(f"AI fit score is outside 0-100 for: {role}")
 
         justification = str(
             item.get("justification", "")
         ).strip()
 
-        key_skills = item.get(
-            "key_skills",
-            []
+        if len(justification) < 20:
+            raise ValueError(
+                f"Insufficient justification for role: {role}"
+            )
+
+        # Reject unsupported role recommendations.
+        role_words = [
+            word for word in role_key.split()
+            if len(word) > 2
+        ]
+
+        role_evidence = any(
+            word in resume_text
+            for word in role_words
         )
+
+        # A role need not have its exact title in the resume.
+        # It must, however, be evaluated against actual resume evidence.
+        if not role_evidence and not candidate_normalized:
+            raise ValueError(
+                f"Insufficient resume evidence to validate role: {role}"
+            )
+
+        key_skills = item.get("key_skills", [])
 
         if not isinstance(key_skills, list):
             key_skills = [key_skills]
 
-        valid_skills = []
+        verified_skills = []
+        verified_keys = set()
 
         for skill in key_skills:
 
             skill_text = str(skill).strip()
+            skill_key = normalize_text(skill_text)
 
-            if not skill_text:
+            if not skill_key:
                 continue
 
-            skill_normalized = normalize_text(
-                skill_text
-            )
-
-            for index, candidate in enumerate(
-                candidate_normalized
-            ):
+            for index, candidate in enumerate(candidate_normalized):
 
                 if (
-                    skill_normalized == candidate
-                    or skill_normalized in candidate
-                    or candidate in skill_normalized
+                    skill_key == candidate
+                    or skill_key in candidate
+                    or candidate in skill_key
                 ):
                     original_skill = candidate_skills[index]
+                    original_key = normalize_text(original_skill)
 
-                    if original_skill not in valid_skills:
-                        valid_skills.append(
-                            original_skill
-                        )
+                    if original_key not in verified_keys:
+                        verified_skills.append(original_skill)
+                        verified_keys.add(original_key)
 
                     break
 
+            if len(verified_skills) >= 3:
+                break
+
         cleaned.append({
             "role": role,
-            "fit_score": fit_score,
-            "justification": justification[:300],
-            "key_skills": valid_skills[:3]
+            "fit_score": round(score),
+            "justification": justification[:500],
+            "key_skills": verified_skills
         })
+
+        seen_roles.add(role_key)
 
     if len(cleaned) < 5:
         raise ValueError(
-            "Ollama returned fewer than 5 valid career predictions."
+            f"Only {len(cleaned)} valid unique roles returned."
         )
 
-    # Sort the roles selected by AI by fit score.
+    if target_role:
+
+        target_key = normalize_text(target_role)
+
+        target_prediction = next(
+            (
+                item for item in cleaned
+                if normalize_text(item["role"]) == target_key
+            ),
+            None
+        )
+
+        if target_prediction is None:
+            raise ValueError(
+                "Ollama did not include the selected target role."
+            )
+
+        target_prediction["role"] = str(target_role).strip()
+
     cleaned.sort(
         key=lambda item: item["fit_score"],
         reverse=True
     )
 
     return {
-        "predictions": cleaned[:5]
+        "predictions": cleaned[:5],
+        "prediction_source": "ollama"
     }
 
 
 
-def _resume_domain_flags(resume: dict, target_role: str | None = None) -> tuple[bool, bool, bool]:
-    """Return (business_analytics, explicit_sap_interest, software_engineering)."""
-    blob = json.dumps(resume or {}, ensure_ascii=False).lower()
-    target = str(target_role or "").lower()
-    blob = f"{blob} {target}"
-    business_analytics = bool(re.search(
-        r"business analyst|business analysis|stakeholder|requirements interpretation|"
-        r"stakeholder reporting|data quality|power bi|advanced excel|business workflows|"
-        r"analytics delivery|reporting analyst|executive-ready summaries",
-        blob,
-    ))
-    explicit_sap = bool(re.search(
-        r"\bsap\b|s/4hana|\berp\b|enterprise resource planning|sap analytics|"
-        r"sap functional|sap business|sap reporting|sap data",
-        blob,
-    ))
-    software_engineering = bool(re.search(
-        r"react|javascript|typescript|fastapi|flask|node\.js|backend developer|"
-        r"software engineer|software developer|rest api|docker|kubernetes",
-        blob,
-    ))
-    return business_analytics, explicit_sap, software_engineering
 
+def build_prediction_prompt(current_resume, domain, target_role=None):
+    """Generate evidence-based career recommendations using Ollama."""
 
-def _skills_for_role(candidate_skills: list[str], role: str) -> list[str]:
-    """Choose matching skills only from the skills parsed from this resume."""
-    role_key = normalize_text(role)
-    preferences = {
-        "business analyst": ("requirements", "stakeholder", "communication", "sql", "excel", "data analysis", "reporting"),
-        "data analyst": ("sql", "python", "power bi", "excel", "statistical", "exploratory", "data analysis"),
-        "bi / reporting": ("power bi", "excel", "sql", "statistical", "data analysis", "reporting"),
-        "sap": ("sql", "power bi", "excel", "data analysis", "communication", "reporting", "python"),
-        "data engineer": ("python", "sql", "mongodb", "fastapi", "flask", "git"),
-        "machine learning": ("python", "machine learning", "nlp", "statistical", "transformers"),
-        "software": ("python", "javascript", "fastapi", "flask", "git", "mongodb"),
-    }
-    key = next((k for k in preferences if k in role_key), "data analyst")
-    priorities = preferences[key]
-    ranked = sorted(
-        enumerate(candidate_skills),
-        key=lambda pair: next(
-            (idx for idx, hint in enumerate(priorities) if hint in normalize_text(pair[1])),
-            len(priorities),
-        ),
-    )
-    result = []
-    for _, skill in ranked:
-        if skill not in result:
-            result.append(skill)
-        if len(result) == 3:
-            break
-    return result
+    target_instruction = ""
 
-
-def _fallback_predictions(current_resume: dict, candidate_skills: list[str], target_role: str | None = None) -> dict:
-    """Produce transparent, resume-grounded role suggestions if Ollama times out."""
-    business_analytics, explicit_sap, software_engineering = _resume_domain_flags(current_resume, target_role)
-    blob = json.dumps(current_resume, ensure_ascii=False).lower()
-
-    if business_analytics:
-        if explicit_sap:
-            candidates = [
-                ("SAP Business Analyst (Entry-Level)", 82, "Resume signals SAP interest plus business and data-reporting skills; hands-on SAP delivery should be verified."),
-                ("Business Analyst – Data & Analytics", 84, "Business-analysis, data-quality and stakeholder-reporting evidence aligns with this role."),
-                ("SAP Analytics / Reporting Analyst", 78, "SQL and reporting skills transfer to SAP analytics; SAP platform experience is not clearly evidenced."),
-                ("BI / Reporting Analyst", 80, "Power BI, SQL and analytical reporting align with business intelligence work."),
-                ("Junior SAP Functional Consultant", 69, "A possible entry pathway; SAP module configuration experience is not established by this resume."),
-            ]
-        else:
-            candidates = [
-                ("Business Analyst – Data & Analytics", 86, "Requirements interpretation, analytics and stakeholder reporting align with this role."),
-                ("Data Analyst", 83, "SQL, Python, exploratory analysis and statistics support data-analysis responsibilities."),
-                ("BI / Reporting Analyst", 80, "Power BI, Excel and reporting experience align with dashboard and insight delivery."),
-                ("SAP Business Analyst (Entry-Level)", 68, "Transferable business and data skills fit an entry pathway; SAP hands-on experience is not shown."),
-                ("SAP Analytics / Reporting Associate", 64, "Analytics and reporting skills are relevant; SAP platform knowledge would need to be developed."),
-            ]
-    elif explicit_sap:
-        candidates = [
-            ("SAP Business Analyst (Entry-Level)", 80, "SAP career interest and data/technology skills align with an entry-level business-analysis pathway."),
-            ("SAP Analytics / Reporting Analyst", 77, "Data and reporting skills can transfer to SAP analytics; verify platform-specific experience."),
-            ("Junior SAP Functional Consultant", 70, "A potential entry pathway; the resume should evidence relevant SAP modules or training."),
-            ("Business Analyst – ERP / Analytics", 75, "Business-process and analytical skills align with ERP-focused requirements work."),
-            ("Data Analyst", 69, "SQL and analytical skills remain relevant to data-focused roles."),
-        ]
-    elif software_engineering:
-        candidates = [
-            ("Software Developer", 82, "The resume contains software-development tools and project evidence."),
-            ("Backend API Developer", 79, "API and backend framework skills support entry-level backend work."),
-            ("Data Engineer (Entry-Level)", 72, "Programming and database skills provide a foundation for data pipelines."),
-            ("Machine Learning Engineer (Entry-Level)", 69, "Python and AI-related skills provide a foundation; production ML experience should be verified."),
-            ("Data Analyst", 65, "Programming and database skills can support analytical work."),
-        ]
-    else:
-        candidates = [
-            ("Data Analyst", 70, "The role may fit the analytical skills identified in the resume."),
-            ("Business Analyst", 66, "The role may fit transferable communication and problem-solving skills."),
-            ("Reporting Analyst", 64, "The role may fit data organization and reporting-related skills."),
-            ("Project Coordinator (Entry-Level)", 58, "A possible adjacent pathway; coordination experience should be verified."),
-            ("Operations Analyst (Entry-Level)", 57, "A possible adjacent pathway; operational analysis experience should be verified."),
-        ]
-
-    # If the user explicitly searched for a role, include its exact title rather than ignoring it.
     if target_role:
-        target = str(target_role).strip()
-        target_key = normalize_text(target)
-        if not any(normalize_text(role) == target_key for role, _, _ in candidates):
-            is_sap_target = "sap" in target_key or "erp" in target_key
-            score = 67 if (is_sap_target and not explicit_sap) else (78 if is_sap_target else 70)
-            explanation = (
-                "Requested target role included for evaluation; transferable skills are present, but SAP-specific experience is not established."
-                if is_sap_target and not explicit_sap else
-                "Requested target role included and evaluated against the skills and experience in this resume."
-            )
-            candidates[-1] = (target, score, explanation)
+        target_instruction = f"""
+USER-SELECTED TARGET ROLE:
+{target_role}
 
-    predictions = []
-    for role, score, justification in sorted(candidates, key=lambda item: item[1], reverse=True)[:5]:
-        predictions.append({
-            "role": role,
-            "fit_score": score,
-            "justification": justification[:300],
-            "key_skills": _skills_for_role(candidate_skills, role),
-        })
-    return {"predictions": predictions, "prediction_source": "resume-grounded-fallback"}
-
-
-def _ensure_business_sap_roles(result: dict, current_resume: dict, candidate_skills: list[str], target_role: str | None = None) -> dict:
-    """Keep SAP pathways visible for BA/analytics profiles without claiming SAP experience."""
-    business_analytics, explicit_sap, _ = _resume_domain_flags(current_resume, target_role)
-    if not business_analytics and not explicit_sap and not (target_role and re.search(r"\b(sap|erp)\b", target_role, re.I)):
-        return result
-
-    raw = list(result.get("predictions", []))
-    sap_titles = [
-        ("SAP Business Analyst (Entry-Level)", 72 if explicit_sap else 68,
-         "Business and data skills transfer to SAP analysis; hands-on SAP delivery is not confirmed."),
-        ("SAP Analytics / Reporting Associate", 68 if explicit_sap else 64,
-         "Reporting skills are relevant; SAP platform knowledge may need to be developed."),
-    ]
-    if explicit_sap:
-        sap_titles.append(("Junior SAP Functional Consultant", 65,
-                           "Potential SAP pathway; module configuration experience should be verified."))
-
-    normalized_existing = {normalize_text(item.get("role", "")) for item in raw if isinstance(item, dict)}
-    for title, score, justification in sap_titles:
-        final_title = title
-        if target_role and "sap" in normalize_text(target_role) and (
-            "business analyst" in normalize_text(target_role) and "business analyst" in normalize_text(title)
-        ):
-            final_title = target_role.strip()
-        if normalize_text(final_title) in normalized_existing:
-            continue
-        raw.append({
-            "role": final_title,
-            "fit_score": score,
-            "justification": justification,
-            "key_skills": _skills_for_role(candidate_skills, final_title),
-        })
-        normalized_existing.add(normalize_text(final_title))
-
-    # Preserve the strongest three model predictions and reserve places for SAP pathway roles.
-    sap_items = [item for item in raw if re.search(r"\bSAP\b|ERP", str(item.get("role", "")), re.I)]
-    other_items = [item for item in raw if item not in sap_items]
-    sap_items.sort(key=lambda item: int(item.get("fit_score", 0)), reverse=True)
-    other_items.sort(key=lambda item: int(item.get("fit_score", 0)), reverse=True)
-    if explicit_sap:
-        combined = (sap_items[:3] + other_items[:2])
-    else:
-        combined = (other_items[:3] + sap_items[:2])
-    combined.sort(key=lambda item: int(item.get("fit_score", 0)), reverse=True)
-    result["predictions"] = combined[:5]
-    return result
-
-def predict_roles(resume: dict, target_role: str | None = None) -> dict:
-    """
-    REAL-TIME AI CAREER PREDICTION.
-
-    The CURRENT uploaded resume is analyzed by Ollama.
-
-    There is:
-    - no hardcoded candidate
-    - no fixed role list
-    - no previous resume
-    - no rule-based role selection
-
-    Roles are open-ended so this works for ANY resume domain
-    (tech, civil engineering, finance, etc.), not just the 8
-    roles covered by role_skills_mapping.json. The skill-gap
-    step (skill_gap_analyzer.py) handles roles outside that
-    mapping with an AI-generated fallback instead of requiring
-    every predicted role to already exist in the JSON file.
-    """
-
-    if not resume:
-        raise ValueError(
-            "Resume data is empty."
-        )
-
-    # Build a small representation of the current resume.
-    current_resume = build_current_resume(resume)
-
-    candidate_skills = extract_candidate_skills(resume)
-
-    if not candidate_skills:
-        raise ValueError(
-            "No skills were detected in the uploaded resume."
-        )
-
-    # IMPORTANT:
-    # Ollama independently discovers roles from the current resume and, when
-    # supplied, evaluates the user's searched target role rather than ignoring it.
-    business_analytics, explicit_sap, software_engineering = _resume_domain_flags(current_resume, target_role)
-    if target_role:
-        target_instruction = (
-            f"The user searched for this exact target role: {target_role}. It MUST appear verbatim as one of the five prediction roles. Evaluate its fit honestly from the actual resume, even if its score is low."
-        )
-    elif explicit_sap:
-        target_instruction = (
-            "This resume explicitly signals SAP/ERP interest or exposure. Prioritize relevant entry-level SAP Business Analyst, SAP Analytics/Reporting, and junior SAP functional roles, alongside the strongest transferable business/data role. Do not claim SAP module experience unless the resume states it."
-        )
-    elif business_analytics:
-        target_instruction = (
-            "This is a business/data analytics profile. Prioritize Business Analyst – Data & Analytics, Data Analyst, and BI/Reporting roles. Include SAP Business Analyst (Entry-Level) and SAP Analytics/Reporting Associate as exploratory pathways, but explicitly state that the resume does not establish hands-on SAP experience."
-        )
-    else:
-        target_instruction = "No target role was searched. Select the five best-fit roles from the resume alone."
+Include this exact role title among the five recommendations.
+Evaluate it honestly. Do not increase its score because it was selected.
+If it is unsuitable, explain the mismatch and assign an appropriately
+low score.
+Select the other four roles independently.
+"""
 
     prompt = f"""
-You are an AI career recommendation system.
+You are an experienced career advisor specializing in resume analysis.
 
-Analyze ONLY this CURRENT candidate resume:
+Analyze the candidate's complete resume and recommend exactly FIVE
+realistic career roles.
 
+CANDIDATE RESUME:
 {json.dumps(current_resume, ensure_ascii=False)}
+
+PRIMARY PROFESSIONAL DOMAIN:
+{domain}
 
 {target_instruction}
 
-Select exactly FIVE career roles.
+IMPORTANT ROLE-SELECTION RULES:
 
-Use:
-- skills
-- education
-- experience
-- projects
-- certifications
-- summary
+1. DOMAIN RELEVANCE:
+   - Identify the candidate's actual professional domain using their
+     education, employment history, responsibilities and skills.
+   - The primary professional domain must guide role selection.
+   - At least four of the five recommended roles must be directly
+     related to the candidate's demonstrated professional domain.
+   - Do not recommend unrelated roles based on isolated keywords.
+   - Do not recommend generic Business Analyst, Data Analyst,
+     Software Developer or IT roles unless the resume provides
+     substantial evidence for those careers.
 
-Rules:
-1. Do not use a predefined role list.
-2. Do not assume a fixed career.
-3. Discover roles from THIS resume.
-4. Different resumes should produce different roles.
-5. Do not invent candidate skills.
-6. Rank from highest fit to lowest fit.
-7. fit_score must be an integer from 0 to 100.
-8. key_skills must contain only skills actually present in the resume.
-9. Maximum 3 key_skills per role.
-10. Keep justification under 12 words.
+2. EXPERIENCE AND SENIORITY:
+   - Consider the candidate's actual years of experience.
+   - Match the recommended job level to the candidate's experience.
+   - Do not recommend Manager, Senior Manager, Director, Lead or
+     Head-level positions unless the resume demonstrates the
+     required leadership and management experience.
+   - Prefer realistic Associate, Executive, Analyst, Specialist
+     or equivalent positions when appropriate.
 
-Return ONLY valid JSON.
+3. EVIDENCE-BASED ANALYSIS:
+   Examine:
+   - Education and qualifications
+   - Previous and current job titles
+   - Actual job responsibilities
+   - Professional experience
+   - Technical and domain-specific skills
+   - Tools and software used
+   - Projects and certifications
 
-Format (repeat this object 5 times inside the "predictions" array, ranked highest fit_score first):
+4. SKILL ACCURACY:
+   - Never invent skills, tools, qualifications or experience.
+   - Do not assume knowledge of Python, SQL, AI, ML, cloud or
+     programming without resume evidence.
+   - Distinguish practical experience from theoretical knowledge.
+   - Include only explicitly supported resume skills in key_skills.
+   - Return no more than three key_skills for each role.
+
+5. ROLE DIVERSITY:
+   - Recommend five distinct and realistic job titles.
+   - Avoid repeating nearly identical roles with minor title changes.
+   - Prefer relevant adjacent career paths within the same domain.
+   - Do not fill the list with unrelated careers just to reach five.
+
+6. FIT SCORE:
+   Evaluate every role independently using:
+   - Education relevance
+   - Relevant professional experience
+   - Skill coverage
+   - Responsibility alignment
+   - Domain and tool knowledge
+   - Experience-level suitability
+
+   Assign an integer score between 0 and 100.
+   Scores must reflect actual resume evidence.
+   Do not assign scores in descending order merely to create a ranking.
+   Do not use arbitrary scores or a fixed score pattern.
+   A high score must indicate strong evidence of role suitability.
+   A missing essential qualification must reduce the score.
+
+7. JUSTIFICATION:
+   - Explain the match using specific resume evidence.
+   - Mention relevant job responsibilities and skills.
+   - Identify important gaps where applicable.
+   - Do not make unsupported claims.
+   - Do not describe the candidate as experienced in a skill
+     that is not present in the resume.
+
+8. OUTPUT:
+   Return exactly five unique career roles.
+   Return ONLY valid JSON.
+   Do not include Markdown or explanations outside the JSON.
+   Use double quotes and valid JSON syntax.
+
+OUTPUT STRUCTURE:
 
 {{
   "predictions": [
     {{
-      "role": "Career Role",
-      "fit_score": 95,
-      "justification": "Strong Python and ML background matches this role directly.",
-      "key_skills": ["Skill 1", "Skill 2"]
+      "role": "Actual career role title",
+      "fit_score": 0,
+      "justification": "Evidence-based explanation of suitability.",
+      "key_skills": ["Actual resume skill"]
     }}
   ]
 }}
+
+The score value 0 in this example is only a placeholder.
+Calculate the actual score independently for every recommended role.
+
+Before returning the JSON, verify:
+- Exactly five distinct roles are present.
+- At least four roles match the primary professional domain.
+- No role has an unsupported seniority level.
+- No skills or experience have been invented.
+- Every fit score is independently justified.
 """
 
+    return prompt
+
+
+
+# ============================================================
+# MAIN ROLE PREDICTION FUNCTION
+# ============================================================
+
+def predict_roles(resume, target_role=None):
+    """
+    Generate five career recommendations using Ollama.
+
+    All recommendations and fit scores are generated by the LLM.
+    No hardcoded fallback scores or role recommendations are used.
+    """
+
+    if not isinstance(resume, dict) or not resume:
+        raise ValueError(
+            "Current uploaded resume data is required."
+        )
+
+    current_resume = build_current_resume(resume)
+
+    candidate_skills = extract_candidate_skills(resume)
+
+    resume_has_content = any([
+        current_resume.get("summary"),
+        current_resume.get("education"),
+        current_resume.get("experience"),
+        current_resume.get("projects"),
+        candidate_skills
+    ])
+
+    if not resume_has_content:
+        raise ValueError(
+            "The uploaded resume does not contain enough "
+            "information for career prediction."
+        )
+
+    domain = detect_resume_domain(current_resume)
+
     print(
-        "[Career AI] Analyzing CURRENT resume with Ollama..."
+        f"[Career AI] Detected resume domain: {domain}"
+    )
+
+    print(
+        "[Career AI] Starting LLM-based career prediction..."
+    )
+    print("\n[DEBUG] RESUME CONTEXT SENT TO OLLAMA")
+    print("Domain:", domain)
+    print("Skills:", current_resume.get("skills"))
+    print("Summary:", current_resume.get("summary"))
+
+    print(
+        "Experience:",
+        json.dumps(
+            current_resume.get("experience"),
+            indent=2,
+            ensure_ascii=False
+        )
+    )
+
+    print("[DEBUG] END RESUME CONTEXT\n")
+
+    prompt = build_prediction_prompt(
+        current_resume,
+        domain,
+        target_role
     )
 
     try:
-        response = generate(prompt, num_predict=600, timeout=180, model=FAST_MODEL)
-        result = clean_model_response(response)
-        result = validate_predictions(result, candidate_skills)
+
+        response = generate(
+            prompt,
+            num_predict=1000,
+            timeout=300,
+            model="llama3.2:3b"
+        )
+
+        raw_result = clean_model_response(response)
+
+        result = validate_predictions(
+            raw_result,
+            candidate_skills,
+            target_role,
+            current_resume,
+            domain
+        )
+
     except Exception as exc:
-        print(f"[Career AI] Ollama role prediction failed; using resume-grounded fallback: {exc}")
-        return _fallback_predictions(current_resume, candidate_skills, target_role)
 
-    # If the model ignored the searched role despite the instruction, make one
-    # focused LLM retry for that role instead of silently showing unrelated roles.
-    if target_role:
-        target_key = normalize_text(target_role)
-        has_target = any(normalize_text(item.get("role")) == target_key for item in result["predictions"])
-        if not has_target:
-            target_prompt = f"""
-You are evaluating a job-seeker for ONE user-requested target role.
-Return only a JSON object with keys role, fit_score, justification, key_skills.
-Use the exact role name {json.dumps(target_role)} in the role field.
-Score fit honestly from 0 to 100 based only on this current candidate resume.
-key_skills may contain only skills present in the resume and at most three entries.
-Do not invent experience, credentials, or skills. If the match is poor, give a low score.
+        print(
+            "[Career AI] LLM prediction failed: "
+            f"{type(exc).__name__}: {exc}"
+        )
 
-CURRENT RESUME:
-{json.dumps(current_resume, ensure_ascii=False)}
+        # Do not silently return fabricated AI predictions.
+        raise RuntimeError(
+            "Career prediction could not be completed by Ollama. "
+            "Please retry the analysis."
+        ) from exc
 
-TARGET ROLE:
-{target_role}
+    result["resume_domain"] = domain
 
-Required JSON format:
-{{"role": {json.dumps(target_role)}, "fit_score": 55, "justification": "Explain the fit honestly in under 12 words.", "key_skills": []}}
-"""
-            try:
-                targeted = clean_model_response(
-                    generate(
-                        target_prompt,
-                        num_predict=220,
-                        timeout=180,
-                        model=FAST_MODEL,
-                    )
-                )
-            except Exception as exc:
-                print(f"[Career AI] Target-role retry failed; retaining honest profile-based result: {exc}")
-                targeted = {"role": target_role, "fit_score": 67 if "sap" in target_key and not explicit_sap else 70,
-                            "justification": "Requested role retained for evaluation; resume evidence does not establish every role-specific requirement.",
-                            "key_skills": _skills_for_role(candidate_skills, target_role)}
-            if isinstance(targeted.get("predictions"), list):
-                targeted_items = targeted["predictions"]
-                targeted = targeted_items[0] if targeted_items else {}
-            elif isinstance(targeted.get("prediction"), dict):
-                targeted = targeted["prediction"]
-            if not isinstance(targeted, dict) or not targeted:
-                raise ValueError("The AI could not evaluate the searched target role. Please retry the prediction.")
-            targeted["role"] = target_role
-            # Keep the four highest-scoring alternatives and insert the actual target evaluation.
-            result = validate_predictions(
-                {"predictions": result["predictions"][:4] + [targeted]},
-                candidate_skills,
-            )
-
-    result = _ensure_business_sap_roles(result, current_resume, candidate_skills, target_role)
+    print(
+        "[Career AI] LLM prediction completed."
+    )
 
     print(
         "[Career AI] Generated roles:",
-        [prediction["role"] for prediction in result["predictions"]]
+        [
+            item["role"]
+            for item in result["predictions"]
+        ]
+    )
+
+    print(
+        "[Career AI] Fit scores:",
+        [
+            {
+                "role": item["role"],
+                "score": item["fit_score"]
+            }
+            for item in result["predictions"]
+        ]
     )
 
     return result
 
 
+# ============================================================
+# LOCAL TEST
+# ============================================================
+
 if __name__ == "__main__":
 
     test_resume = {
-        "candidateName": "Test User",
+        "candidateName": "Test Candidate",
+
+        "summary": (
+            "Software developer with experience in "
+            "Python application development."
+        ),
+
         "skills": [
             "Python",
-            "Machine Learning",
-            "TensorFlow"
+            "FastAPI",
+            "MongoDB",
+            "Git",
+            "REST API"
         ],
+
         "education": [
             "B.Tech Computer Science"
         ],
+
         "experience": [
-            "Machine Learning Intern"
+            "Software Developer Intern"
         ],
+
         "projects": [
-            "ML prediction project"
+            "Developed a Python-based REST API application."
         ],
+
         "certifications": [
-            "Python Certificate"
+            "Python Programming"
         ]
     }
 
+    output = predict_roles(test_resume)
+
     print(
         json.dumps(
-            predict_roles(test_resume),
+            output,
             indent=2,
             ensure_ascii=False
         )
