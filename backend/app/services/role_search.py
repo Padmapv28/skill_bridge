@@ -3,13 +3,17 @@ import json
 import re
 from typing import Any, Dict, List
 
-from .ollama_client import MODEL, generate
+from .ollama_client import FAST_MODEL, generate
+
 
 
 def extract_json(text: Any) -> dict:
-    """Extract a JSON object from the model response."""
+    """Extract only a complete JSON object containing a roles array."""
+
     if isinstance(text, dict):
-        return text
+        if isinstance(text.get("roles"), list):
+            return text
+        raise ValueError("JSON object does not contain a roles array.")
 
     text = str(text or "").strip()
 
@@ -22,25 +26,25 @@ def extract_json(text: Any) -> dict:
     )
     text = re.sub(r"\s*```$", "", text).strip()
 
-    try:
-        result = json.loads(text)
-        if isinstance(result, dict):
-            return result
-    except json.JSONDecodeError:
-        pass
-
-    # Recover a JSON object if the model included extra text.
     decoder = json.JSONDecoder()
 
+    # Accept only a complete JSON object containing the expected roles array.
     for match in re.finditer(r"\{", text):
         try:
             result, _ = decoder.raw_decode(text[match.start():])
-            if isinstance(result, dict):
+
+            if (
+                isinstance(result, dict)
+                and isinstance(result.get("roles"), list)
+            ):
                 return result
+
         except json.JSONDecodeError:
             continue
 
-    raise ValueError("The AI did not return valid JSON.")
+    raise ValueError(
+        "The AI returned incomplete or invalid JSON with no complete roles array."
+    )
 
 
 def _slugify(text: str) -> str:
@@ -121,17 +125,15 @@ Requirements:
             prompt,
             num_predict=700,
             timeout=120,
-            model=MODEL,
+            model=FAST_MODEL,
             queue_timeout=240,
         )
-
         parsed = extract_json(response_text)
         raw_roles = parsed.get("roles", [])
-
+        
         if not isinstance(raw_roles, list):
             print("[Role Search] The AI returned an invalid roles array.")
             return []
-
         cleaned_roles: List[Dict[str, Any]] = []
         seen_titles = set()
 

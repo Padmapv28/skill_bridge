@@ -1,17 +1,19 @@
-
 import apiClient from './client';
 
 /**
  * Resume Analysis & Prediction API Service
  * Integrated with the FastAPI + Ollama LLM backend (/api/career/*).
  *
- * Timeouts: Ollama runs on CPU on the dev laptop, so LLM calls can take
- * 1-3 minutes. Heavy calls use 300000 ms (5 min); quick calls are shorter.
+ * Heavy Ollama calls use a 5-minute timeout because CPU inference
+ * can take several minutes on the development laptop.
  */
 
 const LLM_TIMEOUT = 300000;
-const SEARCH_TIMEOUT = 60000;
+const SEARCH_TIMEOUT = 180000;
 const MAIL_TIMEOUT = 30000;
+
+// Reuse an in-progress skill-gap request for the same role.
+const skillGapRequests = new Map();
 
 /**
  * Accept a role name as either a string or an object.
@@ -94,11 +96,7 @@ const unwrapCareerResume = (candidate) => {
 /**
  * Resolve the actual parsed resume from supported payload formats.
  *
- * IMPORTANT:
- * SkillGapPage may send payload.resume, while older code only
- * checked payload.resumeData. That mismatch caused skills: [].
- *
- * Do not silently send an empty resume to the backend.
+ * Used by roadmap generation and ATS-related workflows.
  */
 const resolveCareerResume = (payload = {}) => {
   const candidates = [
@@ -191,18 +189,25 @@ export const uploadResume = async (file, resumeText = '') => {
 export const predictRole = async (resumeData) => {
   const response = await apiClient.post(
     '/api/career/predict-roles',
-    { resume: resumeData },
-    { timeout: LLM_TIMEOUT }
+    {
+      resume: resumeData,
+    },
+    {
+      timeout: LLM_TIMEOUT,
+    }
   );
 
   return response.data;
 };
 
 /**
- * Get skill gap analysis for a selected role.
+ * Get skill-gap analysis for a selected role.
  *
- * Supports payload.resume, payload.resumeData and
- * payload.userSkills for compatibility with existing pages.
+ * The backend retrieves the authenticated user's uploaded resume
+ * from the server-side session. Therefore, this request does not
+ * require a browser-side resume object.
+ *
+ * Duplicate requests for the same role are reused while pending.
  */
 export const getSkillGap = async (payload = {}) => {
   const roleName = getCareerRoleName(payload.role);
@@ -211,18 +216,29 @@ export const getSkillGap = async (payload = {}) => {
     throw new Error('Please select a target career role.');
   }
 
-  const resumeObj = resolveCareerResume(payload);
+  const requestKey = roleName.toLowerCase();
 
-  const response = await apiClient.post(
+  if (skillGapRequests.has(requestKey)) {
+    return skillGapRequests.get(requestKey);
+  }
+
+  const requestPromise = apiClient.post(
     '/api/career/skill-gap',
     {
       role: roleName,
-      resume: resumeObj,
     },
-    { timeout: LLM_TIMEOUT }
-  );
+    {
+      timeout: LLM_TIMEOUT,
+    }
+  )
+    .then((response) => response.data)
+    .finally(() => {
+      skillGapRequests.delete(requestKey);
+    });
 
-  return response.data;
+  skillGapRequests.set(requestKey, requestPromise);
+
+  return requestPromise;
 };
 
 /**
@@ -245,7 +261,9 @@ export const generateRoadmap = async (payload = {}) => {
       missingSkills: payload.missingSkills || [],
       partialSkills: payload.partialSkills || [],
     },
-    { timeout: LLM_TIMEOUT }
+    {
+      timeout: LLM_TIMEOUT,
+    }
   );
 
   return {
@@ -267,7 +285,10 @@ export const checkAtsScore = async ({
 
   // If the ATS page receives a file directly, parse it first.
   if (file && (!activeResume || !activeResume.skills)) {
-    const uploadRes = await uploadResume(file, resumeText);
+    const uploadRes = await uploadResume(
+      file,
+      resumeText
+    );
 
     if (!uploadRes?.parsedData) {
       throw new Error(
@@ -303,7 +324,9 @@ export const checkAtsScore = async ({
       resume: activeResume,
       jdText,
     },
-    { timeout: LLM_TIMEOUT }
+    {
+      timeout: LLM_TIMEOUT,
+    }
   );
 
   return response.data;
@@ -326,7 +349,9 @@ export const emailAtsReport = async ({
       atsResult,
       jdTitle,
     },
-    { timeout: MAIL_TIMEOUT }
+    {
+      timeout: MAIL_TIMEOUT,
+    }
   );
 
   return response.data;
@@ -351,7 +376,9 @@ export const emailCourseRegistration = async ({
       courseUrl,
       platform,
     },
-    { timeout: MAIL_TIMEOUT }
+    {
+      timeout: MAIL_TIMEOUT,
+    }
   );
 
   return response.data;
@@ -375,6 +402,8 @@ export const clearBackendSession = async () => {
   const response = await apiClient.delete(
     '/api/session/current'
   );
+
+  skillGapRequests.clear();
 
   return response.data;
 };
@@ -429,14 +458,16 @@ export const getCourseSuggestions = async ({
   missingSkills = [],
   partialSkills = [],
 }) => {
-  if (!role) {
+  const roleName = getCareerRoleName(role);
+
+  if (!roleName) {
     throw new Error('Target career role is missing.');
   }
 
   const response = await apiClient.post(
     '/api/career/course-suggestions',
     {
-      role,
+      role: roleName,
       missingSkills,
       partialSkills,
     },

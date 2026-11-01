@@ -10,12 +10,7 @@ import {
   ArrowLeft,
   Map,
   Sparkles,
-  Layers,
-  HelpCircle,
-  TrendingUp,
-  BarChart3,
   Briefcase,
-  ExternalLink
 } from 'lucide-react';
 
 import PageWrapper from '../components/layout/PageWrapper';
@@ -24,7 +19,10 @@ import CircularProgress from '../components/common/CircularProgress';
 import StateFallback from '../components/common/StateFallback';
 import JobOpeningsModal from '../components/jobs/JobOpeningsModal';
 import * as resumeApi from '../api/resume';
-import { mockSkillGapDatabase, mockPredictedRoles, sampleParsedResume } from '../api/mockData';
+import {
+  mockPredictedRoles,
+  sampleParsedResume,
+} from '../api/mockData';
 import { useToast } from '../context/ToastContext';
 import { useResume } from '../context/ResumeContext';
 import { useVoiceAssistant } from '../context/VoiceContext';
@@ -32,17 +30,17 @@ import { useVoiceAssistant } from '../context/VoiceContext';
 export const SkillGapPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { toastSuccess, toastError } = useToast();
+
+  const { toastError } = useToast();
   const { speak } = useVoiceAssistant();
 
   const {
     selectedRole,
     setSelectedRole,
     parsedResume,
-    skillGapResult,
     setSkillGap: setContextSkillGap,
     setRoadmap: setContextRoadmap,
-    setResume
+    setResume,
   } = useResume();
 
   const [role, setRole] = useState(
@@ -68,11 +66,21 @@ export const SkillGapPage = () => {
   const roleTitle =
     typeof role === 'string'
       ? role
-      : role?.title || role?.role || role?.name || 'Selected Career Role';
+      : role?.title ||
+        role?.role ||
+        role?.name ||
+        'Selected Career Role';
+
+  // ---------------------------------------------------------
+  // OPEN JOBS
+  // ---------------------------------------------------------
 
   const handleOpenJobs = () => {
     setShowJobOpenings(true);
-    speak(`Fetching current verified job openings for ${roleTitle}. I found active opportunities across LinkedIn, Indeed, Google Jobs, and leading tech companies.`);
+
+    speak(
+      `Fetching current job openings for ${roleTitle}.`
+    );
   };
 
   // ---------------------------------------------------------
@@ -86,18 +94,26 @@ export const SkillGapPage = () => {
     } else if (selectedRole && !role) {
       setRole(selectedRole);
     }
-  }, [location.state?.role, selectedRole]);
+  }, [
+    location.state?.role,
+    selectedRole,
+    setSelectedRole,
+    role,
+  ]);
 
   // ---------------------------------------------------------
-  // RESTORE THE CORRECT RESUME
+  // RESTORE RESUME FROM CONTEXT OR NAVIGATION
   // ---------------------------------------------------------
 
   useEffect(() => {
     if (location.state?.resumeData) {
-      setAnalysisResume(location.state.resumeData);
+      const resume = location.state.resumeData;
+
+      setAnalysisResume(resume);
+
       setUserSkills(
         location.state.userSkills ||
-          location.state.resumeData.skills ||
+          resume.skills ||
           []
       );
     } else if (parsedResume && !analysisResume) {
@@ -107,7 +123,8 @@ export const SkillGapPage = () => {
   }, [
     location.state?.resumeData,
     location.state?.userSkills,
-    parsedResume
+    parsedResume,
+    analysisResume,
   ]);
 
   // ---------------------------------------------------------
@@ -115,14 +132,7 @@ export const SkillGapPage = () => {
   // ---------------------------------------------------------
 
   useEffect(() => {
-    if (!role) return;
-
-    if (!analysisResume) {
-      setError(
-        'Resume data is missing. Please upload or restore a resume before analyzing skill gaps.'
-      );
-      setSkillGap(null);
-      setIsLoading(false);
+    if (!roleTitle || roleTitle === 'Selected Career Role') {
       return;
     }
 
@@ -131,12 +141,13 @@ export const SkillGapPage = () => {
     const fetchSkillGap = async () => {
       setIsLoading(true);
       setError('');
+      setSkillGap(null);
 
       try {
-        // The API expects the current resume and selected role.
+        // Backend uses the authenticated user's uploaded resume.
+        // Do not send stale browser resume data.
         const response = await resumeApi.getSkillGap({
-          role,
-          resume: analysisResume
+          role: roleTitle,
         });
 
         const payload =
@@ -144,11 +155,29 @@ export const SkillGapPage = () => {
           response?.skill_gap ??
           response;
 
-        if (!payload || typeof payload !== 'object') {
+        if (
+          !payload ||
+          typeof payload !== 'object'
+        ) {
           throw new Error(
             'The skill-gap API returned an invalid response.'
           );
         }
+
+        const matchedSkills =
+          payload.matchedSkills ??
+          payload.matched_skills ??
+          [];
+
+        const partialSkills =
+          payload.partialSkills ??
+          payload.partial_skills ??
+          [];
+
+        const missingSkills =
+          payload.missingSkills ??
+          payload.missing_skills ??
+          [];
 
         const gap = {
           ...payload,
@@ -159,44 +188,44 @@ export const SkillGapPage = () => {
               0
           ),
 
-          benchmarkScore: Number(
+          benchmarkScore:
             payload.benchmarkScore ??
-              payload.benchmark_score ??
-              85
-          ),
+            payload.benchmark_score ??
+            null,
 
-          matchedSkills: Array.isArray(
-            payload.matchedSkills ?? payload.matched_skills
-          )
-            ? (payload.matchedSkills ?? payload.matched_skills)
+          matchedSkills: Array.isArray(matchedSkills)
+            ? matchedSkills
             : [],
 
-          partialSkills: Array.isArray(
-            payload.partialSkills ?? payload.partial_skills
-          )
-            ? (payload.partialSkills ?? payload.partial_skills)
+          partialSkills: Array.isArray(partialSkills)
+            ? partialSkills
             : [],
 
-          missingSkills: Array.isArray(
-            payload.missingSkills ?? payload.missing_skills
-          )
-            ? (payload.missingSkills ?? payload.missing_skills)
-            : []
+          missingSkills: Array.isArray(missingSkills)
+            ? missingSkills
+            : [],
         };
 
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
 
         setSkillGap(gap);
         setContextSkillGap(gap);
         setContextRoadmap(null);
 
         speak(
-          `Skill gap audit complete for ${roleTitle}. Your role readiness score is ${gap.matchPercentage} percent.`
+          `Skill gap analysis completed for ${roleTitle}. Your role readiness score is ${gap.matchPercentage} percent.`
         );
       } catch (err) {
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
 
-        console.error('[Skill Gap] API error:', err);
+        console.error(
+          '[Skill Gap] API error:',
+          err
+        );
 
         const message =
           err?.response?.data?.detail ||
@@ -206,6 +235,7 @@ export const SkillGapPage = () => {
         setError(message);
         setSkillGap(null);
         setContextSkillGap(null);
+
         toastError(message);
       } finally {
         if (!cancelled) {
@@ -219,7 +249,7 @@ export const SkillGapPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [role, analysisResume, retryCount]);
+  }, [roleTitle, retryCount]);
 
   // ---------------------------------------------------------
   // MISSING ROLE FALLBACK
@@ -239,9 +269,13 @@ export const SkillGapPage = () => {
           onLoadSample={() => {
             setRole(mockPredictedRoles[0]);
             setSelectedRole(mockPredictedRoles[0]);
+
             setAnalysisResume(sampleParsedResume);
             setResume(sampleParsedResume);
-            setUserSkills(sampleParsedResume.skills);
+            setUserSkills(
+              sampleParsedResume.skills || []
+            );
+
             setSkillGap(null);
             setContextSkillGap(null);
             setError('');
@@ -260,9 +294,16 @@ export const SkillGapPage = () => {
   // ---------------------------------------------------------
 
   const handleBuildRoadmap = () => {
-    if (!skillGap || !analysisResume) {
+    if (!skillGap) {
       toastError(
-        'A completed skill-gap analysis and resume are required before building a roadmap.'
+        'A completed skill-gap analysis is required before building a roadmap.'
+      );
+      return;
+    }
+
+    if (!analysisResume) {
+      toastError(
+        'Your uploaded resume is not available in the current page. Please return to your resume upload or results page.'
       );
       return;
     }
@@ -280,8 +321,8 @@ export const SkillGapPage = () => {
         missingSkills: skillGap.missingSkills || [],
         partialSkills: skillGap.partialSkills || [],
         matchedSkills: skillGap.matchedSkills || [],
-        matchPercentage: skillGap.matchPercentage
-      }
+        matchPercentage: skillGap.matchPercentage,
+      },
     });
   };
 
@@ -317,7 +358,9 @@ export const SkillGapPage = () => {
 
             <Link
               to="/results"
-              state={{ resumeData: analysisResume }}
+              state={{
+                resumeData: analysisResume,
+              }}
               className="px-5 py-3 rounded-xl bg-navy-850 border border-navy-700 text-slate-200 font-semibold"
             >
               Back to Role Predictions
@@ -334,12 +377,15 @@ export const SkillGapPage = () => {
 
   return (
     <PageWrapper className="py-10 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto">
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 mb-8 border-b border-navy-800">
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-gold/10 border border-brand-gold/30 text-brand-gold text-xs font-mono mb-2">
             <Target className="w-3.5 h-3.5" />
-            <span>Step 3 of 4 • Precision Skill Gap Audit</span>
+            <span>
+              Step 3 of 4 • Precision Skill Gap Audit
+            </span>
           </div>
 
           <h1 className="font-heading text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
@@ -350,7 +396,7 @@ export const SkillGapPage = () => {
           </h1>
 
           <p className="text-slate-400 text-xs sm:text-sm mt-1">
-            Tri-tier competency audit comparing your profile against market standards
+            Tri-tier competency audit comparing your profile against role requirements
           </p>
         </div>
 
@@ -360,12 +406,15 @@ export const SkillGapPage = () => {
             onClick={handleOpenJobs}
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-brand-gold/15 hover:bg-brand-gold/25 text-brand-gold border border-brand-gold/40 text-xs font-semibold transition-all hover:scale-[1.02] shadow-sm"
           >
-            <Briefcase className="w-3.5 h-3.5 text-brand-gold" />
+            <Briefcase className="w-3.5 h-3.5" />
             <span>Live Openings & Apply</span>
           </button>
+
           <Link
             to="/results"
-            state={{ resumeData: analysisResume }}
+            state={{
+              resumeData: analysisResume,
+            }}
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-navy-900 hover:bg-navy-850 text-slate-300 hover:text-white border border-navy-750 text-xs font-medium transition-colors"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
@@ -374,6 +423,7 @@ export const SkillGapPage = () => {
         </div>
       </div>
 
+      {/* Loading */}
       {isLoading || !skillGap ? (
         <div className="glass-card rounded-3xl p-16 text-center border border-brand-gold/30 shadow-glow-gold/20">
           <OrbitingSpinner
@@ -384,8 +434,10 @@ export const SkillGapPage = () => {
         </div>
       ) : (
         <div className="space-y-8">
+
           {/* Top Score Summary */}
           <div className="glass-card rounded-3xl p-6 sm:p-8 border border-navy-700/80 shadow-card-dark grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+
             <div className="lg:col-span-4 flex flex-col items-center justify-center p-4 bg-navy-950/60 rounded-2xl border border-navy-850">
               <CircularProgress
                 percentage={skillGap.matchPercentage ?? 0}
@@ -398,7 +450,9 @@ export const SkillGapPage = () => {
                 <span className="text-xs font-mono text-slate-400">
                   Target Threshold:{' '}
                   <strong className="text-white">
-                    {skillGap.benchmarkScore ?? 85}%
+                    {skillGap.benchmarkScore != null
+                      ? `${skillGap.benchmarkScore}%`
+                      : 'Not configured'}
                   </strong>
                 </span>
               </div>
@@ -420,10 +474,11 @@ export const SkillGapPage = () => {
 
               <h2 className="font-heading text-xl sm:text-2xl font-bold text-white leading-snug">
                 {skillGap.summary ||
-                  'Strong foundational synergy with distinct high-leverage focus areas.'}
+                  'Skill-gap analysis completed. Review the classifications below.'}
               </h2>
 
               <div className="grid grid-cols-3 gap-3 pt-2">
+
                 <div className="p-3 rounded-xl bg-navy-950/70 border border-status-success/30">
                   <p className="font-mono text-xl font-bold text-status-success">
                     {skillGap.matchedSkills?.length || 0}
@@ -450,12 +505,14 @@ export const SkillGapPage = () => {
                     Missing
                   </p>
                 </div>
+
               </div>
             </div>
           </div>
 
           {/* Tri-Tier Skill Categories */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
             {/* Matched Skills */}
             <div className="glass-card rounded-3xl p-6 border border-status-success/30 shadow-glow-success/10 flex flex-col justify-between">
               <div>
@@ -469,7 +526,7 @@ export const SkillGapPage = () => {
                       Matched Skills
                     </h3>
                     <p className="text-[11px] text-emerald-400 font-mono">
-                      Verified Proficiencies
+                      Direct Resume Evidence
                     </p>
                   </div>
                 </div>
@@ -477,14 +534,25 @@ export const SkillGapPage = () => {
                 <div className="flex flex-wrap gap-2">
                   {skillGap.matchedSkills?.map((item, index) => (
                     <motion.div
-                      key={index}
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: index * 0.04 }}
+                      key={`${item.name || item}-${index}`}
+                      initial={{
+                        opacity: 0,
+                        scale: 0.9,
+                      }}
+                      animate={{
+                        opacity: 1,
+                        scale: 1,
+                      }}
+                      transition={{
+                        delay: index * 0.04,
+                      }}
                       className="px-3 py-1.5 rounded-xl bg-status-success/10 border border-status-success/35 text-status-success text-xs font-mono font-medium flex items-center gap-1.5 shadow-sm"
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>{item.name || item}</span>
+
+                      <span>
+                        {item.name || item}
+                      </span>
 
                       {item.proficiency && (
                         <span className="text-[10px] text-emerald-300 opacity-70">
@@ -497,7 +565,7 @@ export const SkillGapPage = () => {
               </div>
 
               <p className="mt-6 pt-4 border-t border-navy-800/80 text-[11px] text-slate-400">
-                Direct resume evidence aligns with current market requirements.
+                Direct resume evidence aligns with the required competency.
               </p>
             </div>
 
@@ -522,20 +590,37 @@ export const SkillGapPage = () => {
                 <div className="space-y-2.5">
                   {skillGap.partialSkills?.map((item, index) => (
                     <motion.div
-                      key={index}
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: index * 0.05 }}
+                      key={`${item.name || item}-${index}`}
+                      initial={{
+                        opacity: 0,
+                        scale: 0.9,
+                      }}
+                      animate={{
+                        opacity: 1,
+                        scale: 1,
+                      }}
+                      transition={{
+                        delay: index * 0.05,
+                      }}
                       className="p-2.5 rounded-xl bg-brand-gold/10 border border-brand-gold/35 text-brand-gold text-xs font-mono space-y-1 shadow-sm"
                     >
                       <div className="flex items-center gap-1.5 font-semibold text-amber-300">
                         <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-                        <span>{item.name || item}</span>
+
+                        <span>
+                          {item.name || item}
+                        </span>
                       </div>
 
                       {item.notes && (
                         <p className="text-[11px] text-slate-300 font-sans font-normal leading-snug">
                           {item.notes}
+                        </p>
+                      )}
+
+                      {item.evidence && (
+                        <p className="text-[11px] text-slate-400 font-sans leading-snug">
+                          Evidence: {item.evidence}
                         </p>
                       )}
                     </motion.div>
@@ -544,7 +629,7 @@ export const SkillGapPage = () => {
               </div>
 
               <p className="mt-6 pt-4 border-t border-navy-800/80 text-[11px] text-slate-400">
-                You have transferable concepts; minor upskilling needed.
+                Transferable or incomplete evidence indicates further development is needed.
               </p>
             </div>
 
@@ -561,7 +646,7 @@ export const SkillGapPage = () => {
                       Missing Capabilities
                     </h3>
                     <p className="text-[11px] text-rose-400 font-mono">
-                      High Impact Priorities
+                      No Resume Evidence
                     </p>
                   </div>
                 </div>
@@ -569,15 +654,26 @@ export const SkillGapPage = () => {
                 <div className="space-y-2.5">
                   {skillGap.missingSkills?.map((item, index) => (
                     <motion.div
-                      key={index}
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: index * 0.05 }}
+                      key={`${item.name || item}-${index}`}
+                      initial={{
+                        opacity: 0,
+                        scale: 0.9,
+                      }}
+                      animate={{
+                        opacity: 1,
+                        scale: 1,
+                      }}
+                      transition={{
+                        delay: index * 0.05,
+                      }}
                       className="p-2.5 rounded-xl bg-status-danger/10 border border-status-danger/35 text-status-danger text-xs font-mono flex items-center justify-between gap-2 shadow-sm"
                     >
                       <div className="flex items-center gap-1.5 font-semibold text-rose-300">
                         <PlusCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                        <span>{item.name || item}</span>
+
+                        <span>
+                          {item.name || item}
+                        </span>
                       </div>
 
                       {item.demand && (
@@ -591,9 +687,10 @@ export const SkillGapPage = () => {
               </div>
 
               <p className="mt-6 pt-4 border-t border-navy-800/80 text-[11px] text-slate-400">
-                Primary blockers for senior tier compensation bands.
+                These competencies currently have no meaningful evidence in the resume.
               </p>
             </div>
+
           </div>
 
           {/* Build Roadmap */}
@@ -601,6 +698,7 @@ export const SkillGapPage = () => {
             <div className="space-y-1 text-center sm:text-left">
               <h3 className="font-heading text-xl font-bold text-white flex items-center justify-center sm:justify-start gap-2">
                 <Sparkles className="w-5 h-5 text-brand-gold" />
+
                 Ready to bridge the{' '}
                 {(skillGap.missingSkills?.length || 0) +
                   (skillGap.partialSkills?.length || 0)}{' '}
@@ -608,7 +706,7 @@ export const SkillGapPage = () => {
               </h3>
 
               <p className="text-xs sm:text-sm text-slate-300">
-                Generate a structured three-phase curriculum or explore current openings for {roleTitle}.
+                Generate a structured learning curriculum or explore current openings for {roleTitle}.
               </p>
             </div>
 
@@ -633,16 +731,18 @@ export const SkillGapPage = () => {
               </button>
             </div>
           </div>
+
         </div>
       )}
 
-      {/* Job Openings & Direct Application Modal */}
+      {/* Job Openings Modal */}
       <JobOpeningsModal
         isOpen={showJobOpenings}
         onClose={() => setShowJobOpenings(false)}
         role={role}
         onViewSkillGap={() => setShowJobOpenings(false)}
       />
+
     </PageWrapper>
   );
 };

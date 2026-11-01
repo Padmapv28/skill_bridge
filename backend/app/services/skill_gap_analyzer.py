@@ -258,316 +258,371 @@ def filter_skill_objects(items, allowed_skills):
 
 def analyze_skill_gap(role, resume):
     """
-    Analyze the CURRENT uploaded resume against the selected role.
+    Evidence-based skill-gap analysis.
 
-    For mapped roles:
-        uses required_skills from role_skills_mapping.json.
-
-    For unmapped roles:
-        Ollama generates the required skill set AND performs the
-        skill-gap analysis in ONE request.
+    Ollama assesses six role-specific competencies.
+    Python validates each assessment, builds the three categories,
+    calculates readiness and generates a consistent summary.
     """
 
-    if not resume:
-        raise ValueError(
-            "Current resume data is required."
-        )
+    if not isinstance(resume, dict) or not resume:
+        raise ValueError("Current resume data is required.")
 
     role_name = role_name_from_input(role)
 
-    current_resume = compact_resume(resume)
-
     candidate_skills = clean_skill_list(
-        resume.get("skills", [])
+        resume.get("skills")
+        or resume.get("technicalSkills")
+        or resume.get("technical_skills")
+        or resume.get("detectedSkills")
+        or resume.get("detected_skills")
+        or []
     )
 
     if not candidate_skills:
-        raise ValueError(
-            "No candidate skills were detected."
-        )
+        raise ValueError("No candidate skills were detected in the current resume.")
 
-    mapped_required_skills = find_required_skills(
-        role_name
+    # Preserve all available resume evidence for assessment.
+    # Limit payload size to keep local inference manageable.
+    resume_context = {
+        "skills": candidate_skills,
+        "education": resume.get("education", []),
+        "experience": resume.get("experience", []),
+        "projects": resume.get("projects", []),
+        "certifications": resume.get("certifications", []),
+        "summary": (
+            resume.get("summary")
+            or resume.get("professionalSummary")
+            or resume.get("professional_summary")
+            or resume.get("headline")
+            or ""
+        ),
+        "additional_information": resume.get("additional_information", {}),
+    }
+
+    resume_json = json.dumps(
+        resume_context,
+        ensure_ascii=False,
+        default=str,
     )
 
-    if mapped_required_skills:
-
-        required_instruction = f"""
-The role has these REQUIRED SKILLS from the curated role database:
-
-{json.dumps(mapped_required_skills, ensure_ascii=False)}
-
-Use ONLY these required skills for the matched/partial/missing
-classification.
-"""
-
-        source_label = "curated"
-
-    else:
-
-        required_instruction = """
-The role is not present in the curated role database.
-
-Generate exactly 6 realistic required skills for this career role
-based on professional expectations for the role.
-
-Then use THOSE 6 skills for the matched/partial/missing analysis.
-
-Do not use unrelated skills.
-"""
-
-        source_label = "ai_generated"
+    if len(resume_json) > 18000:
+        resume_json = resume_json[:18000]
 
     prompt = f"""
-You are an AI Career Skill Gap Analyzer.
+You are an expert career competency assessor.
 
-Analyze ONLY this CURRENT candidate.
-
-CURRENT RESUME:
-{json.dumps(current_resume, ensure_ascii=False)}
-
-SELECTED ROLE:
+Assess the candidate for this exact role:
 {role_name}
 
-CURRENT CANDIDATE SKILLS:
-{json.dumps(candidate_skills, ensure_ascii=False)}
+CURRENT RESUME EVIDENCE:
+{resume_json}
 
-{required_instruction}
+TASK:
+1. Identify exactly SIX distinct, important competencies for this role.
+2. Evaluate the complete resume evidence for each competency.
+3. Classify each competency exactly once.
+4. Recognize relevant transferable skills, education and experience.
+5. Never invent tools, responsibilities, certifications or work experience.
 
-Rules:
-1. Base the analysis ONLY on this candidate and this role.
-2. Do not use another candidate.
-3. Do not invent candidate skills.
-4. A matched skill must clearly be supported by the resume.
-5. A partial skill is related but not clearly demonstrated.
-6. A missing skill is required but not demonstrated.
-7. Keep the response concise.
-8. Return ONLY valid JSON.
-9. Use double quotes.
-10. No markdown.
-11. No comments.
-12. Do not repeat the same skill in multiple categories.
+CLASSIFICATION RULES:
 
-Return exactly this structure:
+MATCHED:
+Direct and sufficient evidence demonstrates the competency.
+Provide specific resume evidence and proficiency.
+
+PARTIAL:
+Relevant transferable knowledge or limited practical evidence exists,
+but the complete competency is not demonstrated.
+Explain both the evidence and remaining gap.
+
+MISSING:
+No meaningful supporting evidence exists in the resume.
+Explain why the competency matters for this role.
+
+IMPORTANT EVIDENCE GUIDANCE:
+- Narrative writing can support medical writing, but does not
+  automatically prove full medical-writing expertise.
+- ICH guidelines and GVP modules can support regulatory knowledge.
+- Pharm.D education can support scientific and medical knowledge.
+- ICSR processing can support safety case processing.
+- MedDRA coding can support adverse-event coding.
+- Audit readiness and quality review can support quality assurance.
+- Related knowledge must not automatically become a full match.
+- Do not assume experience merely from a job title.
+- Do not invent evidence to fill a category.
+
+PROFICIENCY:
+For matched skills, use only Beginner, Intermediate or Advanced.
+Advanced requires strong practical evidence.
+
+DEMAND:
+For missing skills, use High, Medium or Low.
+
+OUTPUT:
+Return ONLY valid JSON in this exact structure:
 
 {{
   "role": "{role_name}",
-  "requiredSkills": [
-    "Skill 1",
-    "Skill 2",
-    "Skill 3",
-    "Skill 4",
-    "Skill 5",
-    "Skill 6"
-  ],
-  "matchedSkills": [
+  "assessments": [
     {{
-      "name": "Skill Name",
-      "proficiency": "Beginner"
-    }}
-  ],
-  "partialSkills": [
+      "name": "Competency 1",
+      "status": "matched",
+      "evidence": "Specific resume evidence",
+      "proficiency": "Intermediate",
+      "notes": "",
+      "reason": "",
+      "demand": ""
+    }},
     {{
-      "name": "Skill Name",
-      "notes": "Short reason"
-    }}
-  ],
-  "missingSkills": [
+      "name": "Competency 2",
+      "status": "partial",
+      "evidence": "Related resume evidence",
+      "proficiency": "",
+      "notes": "Remaining competency gap",
+      "reason": "",
+      "demand": ""
+    }},
     {{
-      "name": "Skill Name",
-      "demand": "High",
-      "reason": "Short reason"
+      "name": "Competency 3",
+      "status": "missing",
+      "evidence": "",
+      "proficiency": "",
+      "notes": "",
+      "reason": "Why this competency is needed",
+      "demand": "High"
     }}
-  ],
-  "summary": "Short readiness summary."
+  ]
 }}
 
-Proficiency must be Beginner, Intermediate, or Advanced.
-
-Demand must be High, Medium, or Low.
+Return exactly six assessment objects.
+Use status values only: matched, partial, missing.
+Each competency must appear exactly once.
+Use distinct role-specific competencies.
+Do not return a readiness score or summary.
+Do not return additional fields or Markdown.
 """
 
     print(
-        f"[Skill Gap AI] Analyzing CURRENT resume for role: "
-        f"{role_name}"
+        f"[Skill Gap AI] Starting evidence assessment: {role_name}"
     )
 
-    # ONE Ollama call only.
-    response = generate(
-        prompt,
-        num_predict=800,
-        timeout=150,
-    )
-
-    result = extract_json(response)
-
-    # ---------------------------------------------------------
-    # Required skills
-    # ---------------------------------------------------------
-
-    if mapped_required_skills:
-        required_skills = mapped_required_skills
-    else:
-        required_skills = clean_skill_list(
-            result.get("requiredSkills", [])
+    try:
+        response = generate(
+            prompt,
+            num_predict=1200,
+            timeout=300,
+            model="llama3.2:3b",
         )
+        result = extract_json(response)
 
-    if not required_skills:
+    except Exception as exc:
+        logger_message = (
+            f"[Skill Gap AI] Ollama failed for {role_name}: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        print(logger_message)
+
+        raise RuntimeError(
+            f"AI skill assessment failed for {role_name}. "
+            "No fallback assessment or score was generated."
+        ) from exc
+
+    if not isinstance(result, dict):
+        raise ValueError("Ollama returned an invalid assessment object.")
+
+    assessments = result.get("assessments")
+
+    if not isinstance(assessments, list) or len(assessments) != 6:
         raise ValueError(
-            f"AI could not determine required skills for "
-            f"'{role_name}'."
+            "Ollama must return exactly six competency assessments."
         )
 
-    # ---------------------------------------------------------
-    # Filter AI results to role-required skills
-    # ---------------------------------------------------------
+    # Validate competency names and ensure there are no duplicates.
+    required_skills = []
+    seen_names = set()
 
-    matched_skills = filter_skill_objects(
-        result.get("matchedSkills", []),
-        required_skills
-    )
+    for item in assessments:
+        if not isinstance(item, dict):
+            raise ValueError("An assessment item is not a valid object.")
 
-    partial_skills = filter_skill_objects(
-        result.get("partialSkills", []),
-        required_skills
-    )
+        name = item.get("name")
 
-    missing_skills = filter_skill_objects(
-        result.get("missingSkills", []),
-        required_skills
-    )
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("An assessment contains an empty skill name.")
 
-    # ---------------------------------------------------------
-    # Remove duplicates between categories
-    # Priority:
-    # matched > partial > missing
-    # ---------------------------------------------------------
+        normalized_name = normalize(name)
 
-    matched_keys = {
-        normalize(item.get("name"))
-        for item in matched_skills
-    }
+        if not normalized_name or normalized_name in seen_names:
+            raise ValueError(
+                f"Duplicate or invalid competency returned: {name}"
+            )
 
-    partial_skills = [
-        item
-        for item in partial_skills
-        if normalize(item.get("name")) not in matched_keys
-    ]
+        seen_names.add(normalized_name)
+        required_skills.append(name.strip())
 
-    occupied = matched_keys | {
-        normalize(item.get("name"))
-        for item in partial_skills
-    }
+    # Build output categories from one assessment per competency.
+    matched_skills = []
+    partial_skills = []
+    missing_skills = []
 
-    missing_skills = [
-        item
-        for item in missing_skills
-        if normalize(item.get("name")) not in occupied
-    ]
+    valid_statuses = {"matched", "partial", "missing"}
+    valid_proficiency = {"beginner", "intermediate", "advanced"}
+    valid_demand = {"high", "medium", "low"}
 
-    # ---------------------------------------------------------
-    # Add any required skill omitted by AI.
-    #
-    # Compare against current candidate skills so that a
-    # required skill clearly present in the resume is matched.
-    # ---------------------------------------------------------
+    for item in assessments:
+        name = item["name"].strip()
+        status = str(item.get("status", "")).strip().lower()
 
-    candidate_normalized = {
-        normalize(skill): skill
-        for skill in candidate_skills
-    }
+        if status not in valid_statuses:
+            raise ValueError(
+                f"Invalid classification for competency: {name}"
+            )
 
-    existing = {
-        normalize(item.get("name"))
-        for item in (
-            matched_skills
-            + partial_skills
-            + missing_skills
-        )
-    }
+        if status == "matched":
+            evidence = item.get("evidence")
+            proficiency = str(
+                item.get("proficiency", "")
+            ).strip().lower()
 
-    for required in required_skills:
+            if not isinstance(evidence, str) or not evidence.strip():
+                raise ValueError(
+                    f"Matched competency has no resume evidence: {name}"
+                )
 
-        required_key = normalize(required)
+            if proficiency not in valid_proficiency:
+                raise ValueError(
+                    f"Invalid proficiency for competency: {name}"
+                )
 
-        if required_key in existing:
-            continue
-
-        candidate_match = None
-
-        for candidate_key, original_skill in (
-            candidate_normalized.items()
-        ):
-            if (
-                candidate_key == required_key
-                or candidate_key in required_key
-                or required_key in candidate_key
-            ):
-                candidate_match = original_skill
-                break
-
-        if candidate_match:
             matched_skills.append({
-                "name": required,
-                "proficiency": "Intermediate",
+                "name": name,
+                "proficiency": proficiency.capitalize(),
+                "evidence": evidence.strip(),
+            })
+
+        elif status == "partial":
+            evidence = item.get("evidence")
+            notes = item.get("notes")
+
+            if not isinstance(evidence, str) or not evidence.strip():
+                raise ValueError(
+                    f"Partial competency has no supporting evidence: {name}"
+                )
+
+            if not isinstance(notes, str) or not notes.strip():
+                raise ValueError(
+                    f"Partial competency has no gap explanation: {name}"
+                )
+
+            partial_skills.append({
+                "name": name,
+                "evidence": evidence.strip(),
+                "notes": notes.strip(),
             })
 
         else:
+            reason = item.get("reason")
+            demand = str(item.get("demand", "")).strip().lower()
+
+            if not isinstance(reason, str) or not reason.strip():
+                raise ValueError(
+                    f"Missing competency has no explanation: {name}"
+                )
+
+            if demand not in valid_demand:
+                raise ValueError(
+                    f"Invalid demand level for competency: {name}"
+                )
+
             missing_skills.append({
-                "name": required,
-                "demand": "Medium",
-                "reason": "This role requires the skill and it was not demonstrated in the resume.",
+                "name": name,
+                "demand": demand.capitalize(),
+                "reason": reason.strip(),
             })
 
-    # ---------------------------------------------------------
-    # Final mathematically consistent readiness
-    # ---------------------------------------------------------
+    # Final structural consistency check.
+    all_classified = (
+        matched_skills + partial_skills + missing_skills
+    )
 
-    matched_keys_final = {
-        normalize(item.get("name"))
-        for item in matched_skills
-    }
+    classified_names = [
+        normalize(item["name"])
+        for item in all_classified
+    ]
 
-    match_percentage = round(
+    if (
+        len(all_classified) != 6
+        or len(set(classified_names)) != 6
+        or set(classified_names) != seen_names
+    ):
+        raise ValueError(
+            "Final skill classifications are inconsistent."
+        )
+
+    # Readiness calculation:
+    # Matched = 100 points, Partial = 50 points, Missing = 0 points.
+    # This is a transparent resume-to-role competency coverage score.
+    score = round(
         (
-            len(matched_keys_final)
-            / len(required_skills)
-        ) * 100
+            len(matched_skills) * 100
+            + len(partial_skills) * 50
+        ) / 6
     )
 
-    match_percentage = max(
-        0,
-        min(100, match_percentage)
-    )
+    # Generate the summary from the final classifications.
+    # This prevents an independent LLM summary from contradicting them.
+    summary_parts = [
+        f"For {role_name}, the resume demonstrates "
+        f"{len(matched_skills)} of the six assessed competencies directly, "
+        f"with {len(partial_skills)} partially demonstrated and "
+        f"{len(missing_skills)} without sufficient supporting evidence."
+    ]
 
-    # ---------------------------------------------------------
-    # Final response
-    # ---------------------------------------------------------
+    if matched_skills:
+        summary_parts.append(
+            "Demonstrated strengths include "
+            + ", ".join(item["name"] for item in matched_skills)
+            + "."
+        )
+
+    if partial_skills:
+        summary_parts.append(
+            "Further development is recommended in "
+            + ", ".join(item["name"] for item in partial_skills)
+            + "."
+        )
+
+    if missing_skills:
+        summary_parts.append(
+            "The resume does not currently demonstrate sufficient evidence for "
+            + ", ".join(item["name"] for item in missing_skills)
+            + "."
+        )
+
+    summary = " ".join(summary_parts)
 
     final_result = {
         "role": role_name,
-        "matchPercentage": match_percentage,
-        "benchmarkScore": 85,
+        "matchPercentage": score,
+        "benchmarkScore": None,
         "requiredSkills": required_skills,
         "matchedSkills": matched_skills,
         "partialSkills": partial_skills,
         "missingSkills": missing_skills,
-        "summary": str(
-            result.get(
-                "summary",
-                f"Current readiness for {role_name} is {match_percentage}%."
-            )
-        )[:500],
-        "requiredSkillsSource": source_label,
+        "summary": summary,
+        "requiredSkillsSource": "llm_generated",
+        "analysisSource": "ollama",
+        "scoringMethod": "matched_100_partial_50_missing_0",
     }
 
     print(
-        f"[Skill Gap AI] Completed analysis for: {role_name}"
-    )
-
-    print(
-        f"[Skill Gap AI] Match percentage: "
-        f"{match_percentage}%"
+        f"[Skill Gap AI] Completed: {role_name} | "
+        f"Score: {score}% | "
+        f"Matched: {len(matched_skills)} | "
+        f"Partial: {len(partial_skills)} | "
+        f"Missing: {len(missing_skills)}"
     )
 
     return final_result
+
