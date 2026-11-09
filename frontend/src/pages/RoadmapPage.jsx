@@ -152,7 +152,7 @@ export const RoadmapPage = () => {
 
         if (isSameRequest) {
           // A second effect setup can reuse the first request instead of
-          // starting another expensive Ollama roadmap generation.
+          // starting another expensive Gemini roadmap generation.
           requestPromise = previousRequest.promise;
         } else {
           requestPromise = resumeApi.generateRoadmap({
@@ -197,30 +197,89 @@ export const RoadmapPage = () => {
     return () => { cancelled = true; };
   }, [roleTitle, resumeData, missingSkills, partialSkills, retryAttempt, isLoadingSession, hasFreshSkillGapInput]);
 
-  // Direct Learning Suggestions are loaded separately from the roadmap model.
-  // Course titles and URLs come from the course matcher or search-link fallbacks,
-  // not from the LLM inventing resource URLs.
+  // Build Direct Learning Suggestions from the courses already returned
+  // with the roadmap. This avoids a second Gemini-backed API request.
   useEffect(() => {
-    if (isLoadingSession || !roleTitle) return;
-    let cancelled = false;
-    const loadSuggestions = async () => {
+    if (isLoadingSession) {
       setCoursesLoading(true);
-      setCoursesError('');
-      try {
-        const result = await resumeApi.getCourseSuggestions({ role: roleTitle, missingSkills, partialSkills });
-        if (!cancelled) setCourseSuggestions(result?.course_suggestions || {});
-      } catch (err) {
-        if (cancelled) return;
-        const message = err?.response?.data?.detail || err?.message || 'Could not load course suggestions.';
-        setCoursesError(message);
+      return;
+    }
+
+    if (isLoading || !roadmap) {
+      setCoursesLoading(Boolean(isLoading));
+      if (!isLoading) {
         setCourseSuggestions({});
-      } finally {
-        if (!cancelled) setCoursesLoading(false);
+        setCoursesError('');
       }
+      return;
+    }
+
+    const getSkillName = (value) => {
+      if (typeof value === 'string') return value.trim();
+      return String(value?.name || value?.skill || value?.title || '').trim();
     };
-    loadSuggestions();
-    return () => { cancelled = true; };
-  }, [roleTitle, JSON.stringify(missingSkills), JSON.stringify(partialSkills), isLoadingSession]);
+
+    const normalizeSkill = (value) =>
+      getSkillName(value).toLocaleLowerCase().replace(/\s+/g, ' ');
+
+    const gapSkillNames = new Set(
+      [...(missingSkills || []), ...(partialSkills || [])]
+        .map(normalizeSkill)
+        .filter(Boolean)
+    );
+
+    const suggestions = {};
+
+    (roadmap.phases || []).forEach((phase) => {
+      (phase.courses || []).forEach((course) => {
+        const skillName = getSkillName(course.skill || course.skill_name);
+        if (!skillName) return;
+
+        // Keep this section focused on missing/partially matched skills
+        // when gap data is available. Otherwise show roadmap course results.
+        if (
+          gapSkillNames.size > 0 &&
+          !gapSkillNames.has(normalizeSkill(skillName))
+        ) {
+          return;
+        }
+
+        const kind = String(course.type || '').toLowerCase() === 'free'
+          ? 'free'
+          : 'certification';
+
+        if (!suggestions[skillName]) {
+          suggestions[skillName] = {
+            certification: [],
+            free: [],
+          };
+        }
+
+        const url = course.url || '';
+        const duplicate = suggestions[skillName][kind].some((item) =>
+          (item.url || '').replace(/\/$/, '').toLowerCase() ===
+          url.replace(/\/$/, '').toLowerCase()
+        );
+
+        if (duplicate) return;
+
+        suggestions[skillName][kind].push({
+          title: course.title || 'Untitled course',
+          platform: course.provider || course.platform || 'Learning provider',
+          url,
+          level: course.level || 'All levels',
+          type: kind,
+          reason: course.reason || '',
+          url_verified: Boolean(course.url_verified),
+          url_unverified: Boolean(course.url_unverified),
+        });
+      });
+    });
+
+    setCourseSuggestions(suggestions);
+    setCoursesError('');
+    setCoursesLoading(false);
+  }, [roadmap, missingSkills, partialSkills, isLoading, isLoadingSession]);
 
   // Robust fallback for direct access or refresh without state
   if (!role) {
@@ -425,7 +484,7 @@ export const RoadmapPage = () => {
             )}
             {!coursesLoading && !coursesError && Object.keys(courseSuggestions).length === 0 && (
               <p className="p-4 rounded-xl bg-navy-950/60 border border-navy-800 text-sm text-slate-400">
-                No missing or partial skills were provided, so no additional suggestions are needed.
+                No additional course recommendations were returned for the current skill gaps. Your roadmap phases and projects are still available below.
               </p>
             )}
             {!coursesLoading && !coursesError && Object.entries(courseSuggestions).map(([skillName, groups]) => (
@@ -622,9 +681,14 @@ export const RoadmapPage = () => {
                                   <span className="px-2 py-0.5 rounded-md bg-navy-950 border border-navy-700 text-[10px] font-mono text-cyan-400 font-bold">
                                     {course.platform}
                                   </span>
-                                  <span className="text-[11px] font-mono text-brand-gold flex items-center gap-1">
-                                    ★ {course.rating || '4.9'}
-                                  </span>
+                                  {course.rating !== null &&
+                                  course.rating !== undefined &&
+                                  course.rating !== '' &&
+                                  Number.isFinite(Number(course.rating)) ? (
+                                    <span className="text-[11px] font-mono text-brand-gold flex items-center gap-1">
+                                      ★ {Number(course.rating).toFixed(1)}
+                                    </span>
+                                  ) : null}
                                 </div>
 
                                 <h4 className="font-heading font-bold text-sm text-slate-100 group-hover:text-brand-blue-light transition-colors leading-snug">
@@ -636,16 +700,22 @@ export const RoadmapPage = () => {
                                 </p>
                               </div>
 
-                              {/* Clickable Course Link opening in new tab with rel="noopener noreferrer" */}
-                              <a
-                                href={course.url || 'https://www.coursera.org'}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center justify-between w-full py-2 px-3 rounded-xl bg-navy-950 hover:bg-brand-blue text-slate-300 hover:text-white border border-navy-800 text-xs font-medium transition-all group/btn focus-visible:ring-2"
-                              >
-                                <span>Start Course</span>
-                                <ExternalLink className="w-3.5 h-3.5 transition-transform group-hover/btn:translate-x-0.5 group-hover/btn:-translate-y-0.5" />
-                              </a>
+                              {/* Open only a supplied HTTPS course URL; never redirect to a generic homepage. */}
+                              {typeof course.url === 'string' && /^https:\/\//i.test(course.url.trim()) ? (
+                                <a
+                                  href={course.url.trim()}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center justify-between w-full py-2 px-3 rounded-xl bg-navy-950 hover:bg-brand-blue text-slate-300 hover:text-white border border-navy-800 text-xs font-medium transition-all group/btn focus-visible:ring-2"
+                                >
+                                  <span>Start Course</span>
+                                  <ExternalLink className="w-3.5 h-3.5 transition-transform group-hover/btn:translate-x-0.5 group-hover/btn:-translate-y-0.5" />
+                                </a>
+                              ) : (
+                                <span className="inline-flex items-center w-full py-2 px-3 rounded-xl bg-navy-950/60 text-slate-500 border border-navy-800 text-xs">
+                                  Course link unavailable
+                                </span>
+                              )}
                             </div>
                           ))}
                         </div>

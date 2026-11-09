@@ -1,0 +1,126 @@
+﻿{
+    "role":  "Junior Backend Developer",
+    "target_timeline":  "12 weeks",
+    "phases":  [
+                   {
+                       "phase":  1,
+                       "title":  "Backend Fundamentals and Python Proficiency",
+                       "description":  "Transitioning from data-heavy pharmacovigilance roles to backend logic by mastering Python and API design principles.",
+                       "duration":  "4 weeks",
+                       "skills":  [
+                                      "Python",
+                                      "API Design"
+                                  ],
+                       "project":  "Build a RESTful API for a Pharmacovigilance Case Management system that allows CRUD operations on ICSR data.",
+                       "courses":  [
+                                       {
+                                           "title":  "Python for Everybody Specialization",
+                                           "provider":  "Coursera",
+                                           "url":  "https://www.coursera.org/specializations/python",
+                                           "level":  "Beginner",
+                                           "type":  "certification",
+                                           "skill":  "Python",
+                                           "reason":  "This is the gold standard for beginners to learn Python programming, covering data structures and database interaction, which is essential for transitioning into backend development.",
+                                           "url_verified":  true,
+                                           "url_unverified":  false
+                                       },
+                                       {
+                                           "title":  "Google IT Automation with Python Professional Certificate",
+                                           "provider":  "Coursera",
+                                           "url":  "https://www.coursera.org/professional-certificates/google-it-automation",
+                                           "level":  "Beginner",
+                                           "type":  "certification",
+                                           "skill":  "Python",
+                                           "reason":  "Focuses on practical application of Python for automation and system tasks, bridging the gap between the candidate\u0027s data-heavy background and backend engineering.",
+                                           "url_verified":  true,
+                                           "url_unverified":  false
+                                       },
+                                       {
+                                           "title":  "Building RESTful APIs with Python and Flask",
+                                           "provider":  "Udemy",
+                                           "url":  "https://www.udemy.com/course/rest-api-flask-and-python/",
+                                           "level":  "Beginner",
+                                           "type":  "certification",
+                                           "skill":  "API Design",
+                                           "reason":  "Provides a hands-on approach to designing and building APIs, which is a core requirement for the candidate\u0027s transition to a backend role.",
+                                           "url_verified":  true,
+                                           "url_unverified":  false
+                                       },
+                                       {
+                                           "title":  "Introduction to APIs",
+                                           "provider":  "Postman Learning Center",
+                                           "url":  "https://learning.postman.com/docs/getting-started/introduction/",
+                                           "level":  "Beginner",
+                                           "type":  "free",
+                                           "skill":  "API Design",
+                                           "reason":  "An excellent, free resource to understand the fundamentals of API architecture and testing, which is critical for backend development and system integration.",
+                                           "url_verified":  true,
+                                           "url_unverified":  false
+                                       }
+                                   ]
+                   },
+                   {
+                       "phase":  2,
+                       "title":  "Data Integrity and Performance Optimization",
+                       "description":  "Applying your experience in data quality to backend database management and performance tuning.",
+                       "duration":  "4 weeks",
+                       "skills":  [
+                                      "Database Indexing",
+                                      "Caching Strategies"
+                                  ],
+                       "project":  "Optimize a database schema for a large-scale medical records repository using indexing and implement Redis caching for frequently accessed safety reports.",
+                       "courses":  [
+                                       {
+                                           "title":  "Database Design and Basic SQL in PostgreSQL",
+                                           "provider":  "Coursera",
+                                           "url":  "https://www.coursera.org/learn/database-design-postgresql",
+                                           "level":  "Beginner",
+                                           "type":  "certification",
+                                           "skill":  "Database Indexing",
+                                           "reason":  "This course covers fundamental database design principles, including how to optimize query performance through proper indexing techniques.",
+                                           "url_verified":  true,
+                                           "url_unverified":  false
+                                       },
+                                       {
+                                           "title":  "Database Indexing Strategies",
+                                           "provider":  "MongoDB University",
+                                           "url":  "https://learn.mongodb.com/learning-paths/indexing-strategies",
+                                           "level":  "Beginner",
+                                           "type":  "free",
+                                           "skill":  "Database Indexing",
+                                           "reason":  "Provides a focused look at how indexing works to improve data retrieval speeds, which is essential for backend performance optimization.",
+                                           "url_verified":  true,
+                                           "url_unverified":  false
+                                       },
+                                       {
+                                           "title":  "Web Application Architecture",
+                                           "provider":  "Udacity",
+                                           "url":  "https://www.udacity.com/course/web-development--cs253",
+                                           "level":  "Beginner",
+                                           "type":  "free",
+                                           "skill":  "Caching Strategies",
+                                           "reason":  "Covers the fundamentals of web architecture, including how to implement caching to improve application performance and scalability.",
+                                           "url_verified":  true,
+                                           "url_unverified":  false
+                                       }
+                                   ]
+                   },
+                   {
+                       "phase":  3,
+                       "title":  "System Reliability and Architecture",
+                       "description":  "Focusing on software quality assurance and high-level system design to ensure robust backend services.",
+                       "duration":  "4 weeks",
+                       "skills":  [
+                                      "Unit Testing",
+                                      "Integration Testing"
+                                  ],
+                       "project":  "Develop a comprehensive test suite for a drug safety reporting service, ensuring 90% code coverage and seamless integration between microservices.",
+                       "courses":  [
+
+                                   ]
+                   }
+               ],
+    "final_project":  "Develop a full-stack Safety Data Pipeline that ingests raw clinical data, processes it through a validated backend API, and stores it in an optimized database with automated testing.",
+    "career_advice":  "Leverage your deep domain expertise in Pharmacovigilance and regulatory compliance (GVP/ICH) to target backend roles in HealthTech or Life Sciences companies. Your ability to handle complex, audit-ready data is a unique competitive advantage that most junior developers lack; emphasize this \u0027domain-driven design\u0027 mindset in your interviews.",
+    "roadmap_id":  "6aedb9189c44f9f90a8e2e86"
+}
