@@ -4,7 +4,27 @@ import os
 import re
 
 from .llm_client import generate, get_provider
+DEFAULT_BENCHMARK_SCORE = 70
 
+
+def get_benchmark_score() -> int:
+    """Return the configured target readiness threshold."""
+
+    raw_score = os.getenv(
+        "SKILL_GAP_BENCHMARK_SCORE", "70"
+    ).strip()
+
+    try:
+        score = int(raw_score)
+    except ValueError:
+        print("[Skill Gap] Invalid benchmark score. Using 70%.")
+        return DEFAULT_BENCHMARK_SCORE
+
+    if not 0 <= score <= 100:
+        print("[Skill Gap] Benchmark must be 0-100. Using 70%.")
+        return DEFAULT_BENCHMARK_SCORE
+
+    return score
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -686,7 +706,7 @@ FINAL RULES:
     final_result = {
         "role": role_name,
         "matchPercentage": score,
-        "benchmarkScore": None,
+        "benchmarkScore": get_benchmark_score(),
         "requiredSkills": required_skills,
         "matchedSkills": matched_skills,
         "partialSkills": partial_skills,

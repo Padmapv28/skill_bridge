@@ -14,7 +14,10 @@ from starlette.concurrency import run_in_threadpool
 
 from app.database.db import db
 from app.services.role_predictor import predict_roles
-from app.services.skill_gap_analyzer import analyze_skill_gap
+from app.services.skill_gap_analyzer import (
+    analyze_skill_gap,
+    get_benchmark_score,
+)
 from app.services.roadmap_generator import generate_roadmap
 from app.services.course_matcher import recommend_courses
 from app.services.ats_scorer import score_ats
@@ -266,7 +269,16 @@ async def skill_gap_api(
                         role_name,
                     )
 
-                    return saved_result
+                    cached_result = dict(saved_result)
+                    cached_result["benchmarkScore"] = get_benchmark_score()
+
+                    if saved_result.get("benchmarkScore") != cached_result["benchmarkScore"]:
+                        await _save_session_fields(
+                            user_id,
+                            {"skill_gap": cached_result},
+                        )
+
+                    return cached_result
 
             logger.info(
                 "Starting skill-gap analysis for user %s and role %s",

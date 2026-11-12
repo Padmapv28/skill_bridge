@@ -3,7 +3,7 @@ import json
 import re
 from typing import Any, Dict, List
 
-from .ollama_client import FAST_MODEL, generate
+from .llm_client import generate
 
 
 
@@ -125,7 +125,6 @@ Requirements:
             prompt,
             num_predict=700,
             timeout=120,
-            model=FAST_MODEL,
             queue_timeout=240,
         )
         parsed = extract_json(response_text)
