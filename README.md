@@ -2,7 +2,7 @@
 
 SkillBridge is an AI-powered career guidance platform that helps users understand their professional profile, identify skill gaps, explore suitable career opportunities, and follow structured learning roadmaps.
 
-The platform combines resume parsing, natural language processing, AI-based role prediction, skill gap analysis, and personalized course recommendations to support career development.
+The platform combines resume parsing, natural language processing, AI-based role prediction, skill gap analysis, personalized roadmaps, and course recommendations to support career development.
 
 ---
 
@@ -14,9 +14,11 @@ SkillBridge addresses this challenge by analyzing a user's resume and providing 
 
 The system helps users:
 
+- Register and log in using an individual email address and SkillBridge password.
 - Upload and analyze resumes.
 - Extract structured information from resumes.
 - Identify relevant career roles based on resume content.
+- Search for career roles using a natural-language query.
 - Compare existing skills with role-specific requirements.
 - Identify matched, partially matched, and missing skills.
 - Generate personalized learning roadmaps.
@@ -25,7 +27,14 @@ The system helps users:
 
 ## 2. Key Features
 
-### 2.1 Resume Upload and Analysis
+### 2.1 User Registration and Email OTP Verification
+
+- Users register with their own email address and a password created specifically for SkillBridge.
+- A verification OTP is sent to the email address entered during registration.
+- A centrally configured sender account delivers OTP messages; users do not provide their email-account passwords to SkillBridge.
+- Email delivery is configured through SMTP environment variables.
+
+### 2.2 Resume Upload and Analysis
 
 - Supports PDF and DOCX resume formats.
 - Extracts relevant information from uploaded resumes.
@@ -33,38 +42,45 @@ The system helps users:
 - Identifies skills, education, experience, and project details.
 - Makes the extracted information available for subsequent career analysis.
 
-### 2.2 AI-Based Role Prediction
+### 2.3 AI-Based Role Prediction
 
 - Analyzes the candidate's resume information.
 - Identifies relevant technical skills and professional experience.
 - Predicts suitable career roles based on the candidate's profile.
-- Provides role recommendations to support career exploration.
+- Provides role recommendations and fit scores to support career exploration.
 
-### 2.3 Skill Gap Analysis
+### 2.4 Role Search
+
+- Accepts a user's natural-language career-role search request.
+- Uses the configured LLM provider to generate relevant professional roles.
+- Returns role descriptions and related skills.
+
+### 2.5 Skill Gap Analysis
 
 - Evaluates the candidate's skills against the selected career role.
-- Classifies skills into:
-  - Matched Skills
-  - Partially Matched Skills
-  - Missing Skills
-- Calculates a skill match percentage.
+- Classifies competencies into matched, partially matched, and missing categories.
+- Calculates a role-readiness score using the validated skill classifications.
 - Identifies areas that require further learning and improvement.
+- Displays a separate target benchmark score. The default target is 70%, configurable through `SKILL_GAP_BENCHMARK_SCORE`.
 
-### 2.4 Personalized Learning Roadmap
+The current readiness scoring method assigns 100 points to a matched competency, 50 points to a partially matched competency, and 0 points to a missing competency, then averages the six assessed competencies. The target benchmark is a comparison value and does not change this calculation.
+
+### 2.6 Personalized Learning Roadmap
 
 - Generates a structured learning roadmap for the selected career role.
 - Organizes required learning into phases.
 - Provides a progression path based on identified skill gaps.
 - Supports roadmap progress tracking.
 
-### 2.5 Course Recommendations
+### 2.7 Course Recommendations
 
 - Recommends learning resources relevant to identified skill gaps.
-- Includes certification-based and free learning resources.
-- Supports beginner and advanced learning levels.
+- Includes certification-based and free learning resources where suitable results are found.
+- Supports different learning levels.
 - Connects course suggestions with the recommended learning roadmap.
+- Checks course relevance and attempts to verify course URLs before including recommendations.
 
-### 2.6 Progress Tracking
+### 2.8 Progress Tracking
 
 - Supports tracking of roadmap learning activities.
 - Records completed skills and learning progress.
@@ -78,36 +94,35 @@ SkillBridge follows a modular client-server architecture.
 flowchart TD
     A[User] --> B[React Frontend]
     B --> C[FastAPI Backend]
-
     C --> D[Resume Processing]
     D --> E[Resume Data Extraction]
     E --> F[Structured Resume Information]
-
-    F --> G[AI Role Prediction]
-    G --> H[Skill Gap Analysis]
-    H --> I[Personalized Roadmap]
-    I --> J[Course Recommendations]
-
-    C --> K[MongoDB Database]
-    G --> K
-    H --> K
-    I --> K
-
-    J --> L[Career Guidance Results]
-    K --> L
-    L --> B
+    F --> G[Gemini-powered Career Analysis]
+    G --> H[Role Prediction and Role Search]
+    H --> I[Skill Gap Analysis]
+    I --> J[Personalized Roadmap]
+    J --> K[Course Discovery and Recommendations]
+    C --> L[MongoDB Database]
+    G --> L
+    I --> L
+    J --> L
+    K --> M[Career Guidance Results]
+    L --> M
+    M --> B
 ```
 
 ### Architecture Components
 
 | Component | Responsibility |
 |---|---|
-| Frontend | User interface, resume upload, results, and progress display |
+| Frontend | User interface, registration, resume upload, results, and progress display |
 | Backend | API handling, authentication, workflow coordination, and business logic |
-| ML / Resume Processing | Resume text extraction, structured parsing, and skill identification |
-| AI Services | Role prediction, skill gap analysis, and roadmap generation |
+| Resume Processing | Resume text extraction, structured parsing, and skill identification |
+| AI Services | Career prediction, role search, skill gap analysis, roadmap generation, and course discovery |
+| Gemini API | Primary configured LLM provider for AI workflows |
+| Ollama | Optional local LLM provider when explicitly selected in configuration |
 | Database | Storage and retrieval of application data |
-| Ollama | Local language model inference for supported AI workflows |
+| Email Service | Sends registration OTPs through the centrally configured SMTP sender |
 
 ## 4. Technology Stack
 
@@ -116,9 +131,11 @@ flowchart TD
 | Frontend | React.js, Vite, JavaScript, Tailwind CSS |
 | Backend | Python, FastAPI |
 | Database | MongoDB |
-| AI / LLM | Ollama, Llama 3.2 |
+| Primary AI / LLM | Google Gemini API (Google AI Studio) |
+| Optional local LLM | Ollama, Llama models (only when explicitly configured) |
 | Resume Processing | pdfplumber, PyMuPDF, python-docx, pytesseract |
 | NLP and Skill Matching | spaCy, RapidFuzz |
+| Email | SMTP (Gmail SMTP configuration supported) |
 | API Communication | REST APIs |
 | Version Control | Git and GitHub |
 
@@ -128,43 +145,44 @@ flowchart TD
 
 The resume-processing module extracts text from uploaded PDF and DOCX documents and converts the information into structured data.
 
-### Role Prediction
+### Gemini-powered LLM Service
 
-The role prediction service analyzes resume information and generates suitable career-role recommendations using an LLM-based workflow.
+The backend uses a central LLM client (`backend/app/services/llm_client.py`) so AI services can use the provider selected through `LLM_PROVIDER`. Gemini is the intended primary provider for the current setup. The model and thinking level can be configured through environment variables.
+
+The central client also includes request pacing and retry handling to reduce bursts against API rate limits. These measures do not increase the quota assigned to a Google AI Studio project. Free-tier request and daily limits can still cause HTTP 429 responses.
+
+### Role Prediction and Role Search
+
+The role prediction service analyzes resume information and generates suitable career-role recommendations. Role Search interprets a user's search query and generates matching professional roles. Both use the configured central LLM client.
 
 ### Skill Gap Analysis
 
-The skill gap analyzer compares the candidate's profile with the competencies required for a selected role.
+The skill gap analyzer compares the candidate's profile with the competencies required for a selected role. It classifies competencies as matched, partially matched, or missing and calculates the overall readiness percentage.
 
-The analysis classifies competencies as matched, partially matched, or missing and calculates the overall match percentage.
+### Roadmap Generation and Course Discovery
 
-### Roadmap Generation
-
-The roadmap service uses the selected career role and identified skill requirements to generate a structured learning plan.
-
-### Course Suggestions
-
-The course recommendation workflow provides relevant learning resources to help candidates address their skill gaps.
+The roadmap service uses the selected career role and identified skill requirements to generate a structured learning plan. Course discovery searches for relevant learning resources for roadmap skills and validates results before returning them.
 
 ## 6. Application Workflow
 
 ```mermaid
 flowchart TD
-    A[User Registration / Login] --> B[Upload Resume]
-    B --> C[Resume Extraction and Parsing]
-    C --> D[Structured Resume Profile]
-    D --> E[AI-Based Role Prediction]
-    E --> F[Select Career Role]
-    F --> G[Skill Gap Analysis]
-    G --> H[Matched / Partial / Missing Skills]
-    H --> I[Generate Learning Roadmap]
-    I --> J[Course Recommendations]
-    J --> K[Track Learning Progress]
+    A[User Registration / Login] --> B[Email OTP Verification]
+    B --> C[Upload Resume]
+    C --> D[Resume Extraction and Parsing]
+    D --> E[Structured Resume Profile]
+    E --> F[AI-based Role Prediction or Role Search]
+    F --> G[Select Career Role]
+    G --> H[Skill Gap Analysis]
+    H --> I[Matched / Partial / Missing Skills]
+    I --> J[Generate Learning Roadmap]
+    J --> K[Course Recommendations]
+    K --> L[Track Learning Progress]
 ```
 
 ## 7. Project Structure
 
-The repository is organized into separate frontend, backend, and machine-learning components.
+The repository is organized into separate frontend and backend components, with supporting machine-learning and resume-processing resources.
 
 ```text
 skill_bridge/
@@ -175,7 +193,9 @@ skill_bridge/
 │   │   └── services/
 │   ├── tests/
 │   ├── main.py
-│   └── requirements.txt
+│   ├── requirements.txt
+│   ├── .env.example
+│   └── .env                 # Local secrets; do not commit
 │
 ├── frontend/
 │   ├── src/
@@ -183,12 +203,7 @@ skill_bridge/
 │   │   └── pages/
 │   └── package.json
 │
-├── ml/
-│   ├── resume_extractor.py
-│   ├── resume_parser.py
-│   ├── skills_taxonomy.json
-│   ├── main.py
-│   └── docs/
+├── ml/                      # Supporting ML resources, if present in the checkout
 │
 └── README.md
 ```
@@ -201,55 +216,118 @@ skill_bridge/
 
 Install the following software before running the project:
 
-- Python
-- Node.js and npm
-- MongoDB
-- Ollama
-- Git
+- Python (a version compatible with `backend/requirements.txt`).
+- Node.js and npm.
+- MongoDB.
+- Git.
+- A Google AI Studio API key for Gemini-powered features.
+- A configured SMTP sender account for email OTP delivery.
+
+Ollama is **not required** when `LLM_PROVIDER=gemini`.
 
 ### Step 1: Clone the Repository
 
-```bash
+```powershell
 git clone https://github.com/Padmapv28/skill_bridge.git
 cd skill_bridge
 ```
 
 ### Step 2: Backend Setup
 
-Open a terminal in the project directory.
-
 ```powershell
 cd backend
 python -m venv venv
-```
-
-Activate the virtual environment:
-
-```powershell
 .\venv\Scripts\Activate.ps1
-```
-
-Install dependencies:
-
-```powershell
 pip install -r requirements.txt
 ```
 
-Start the backend:
+Create the local environment file from the example:
 
 ```powershell
-python -m uvicorn main:app --port 8000 --workers 1
+Copy-Item .env.example .env
 ```
 
-Backend address:
+Open `backend/.env` and configure the values described below. If the repository's `.env.example` does not yet contain a setting used by your checkout, add that setting to your local `.env` using the variable names supported by the backend configuration.
+
+#### Gemini configuration
+
+Create an API key in [Google AI Studio](https://aistudio.google.com/api-keys) and configure:
+
+```env
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=your_gemini_api_key
+GEMINI_MODEL=your_available_gemini_model
+GEMINI_THINKING_LEVEL=MINIMAL
+```
+
+Use a model available to your Google AI Studio project. The model shown in recent SkillBridge development logs was `gemini-3.6-flash`; model availability and quota depend on the Google project and account.
+
+#### Skill Gap target benchmark
+
+```env
+SKILL_GAP_BENCHMARK_SCORE=70
+```
+
+This sets the target benchmark shown in the Skill Gap page. The default is 70 when the setting is omitted or invalid. It does not alter the readiness calculation.
+
+#### Email OTP configuration
+
+Configure one project-owned sender account. Users register with their own email addresses; the sender account is used by the backend to deliver OTP messages.
+
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_USER=your_project_sender@gmail.com
+SMTP_PASSWORD=your_gmail_app_password
+EMAIL_FROM=your_project_sender@gmail.com
+OTP_DEV_MODE=False
+```
+
+For Gmail SMTP, use an App Password generated for the sender account (where available and eligible), not the account's normal sign-in password. Protect the sender account with 2-Step Verification. Never ask SkillBridge users to provide their Gmail passwords.
+
+#### Database and application configuration
+
+Configure the MongoDB connection, database name, JWT secret, and frontend origin using the variable names in `backend/app/config.py` and the supplied `.env.example`. A typical local MongoDB URI is:
+
+```env
+MONGO_URI=mongodb://localhost:27017
+MONGO_DB_NAME=skillbridge
+JWT_SECRET_KEY=replace-with-a-long-random-secret
+JWT_EXPIRE_MINUTES=60
+FRONTEND_ORIGIN=http://localhost:5173
+```
+
+Do not reuse the example JWT secret in a deployed environment.
+
+### Step 3: Start MongoDB
+
+Start the MongoDB service and confirm that it is reachable using the URI configured in `backend/.env`.
+
+### Step 4: Start the Backend
+
+From the `backend` directory with the virtual environment activated:
+
+```powershell
+python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Backend API:
 
 ```text
-http://localhost:8000
+http://127.0.0.1:8000
 ```
 
-### Step 3: Frontend Setup
+Interactive API documentation:
 
-Open another terminal:
+```text
+http://127.0.0.1:8000/docs
+```
+
+Keep the backend terminal open while using the application.
+
+### Step 5: Frontend Setup
+
+Open a second terminal at the project root:
 
 ```powershell
 cd frontend
@@ -263,109 +341,102 @@ The frontend is generally available at:
 http://localhost:5173
 ```
 
-### Step 4: Database Setup
+## 9. Gemini API Request Limits
 
-Configure MongoDB according to the application's environment configuration.
+Gemini API usage is subject to the rate limits and quota assigned to the Google AI Studio project and selected model. The backend central LLM client spaces request starts and retries temporary failures to reduce request bursts.
 
-Ensure that the backend can connect to the configured MongoDB instance before using the application.
+- Request pacing is process-local; multiple backend instances or other applications using the same Google project can still contribute to the project's total usage.
+- Request pacing cannot bypass a daily request quota or billing restriction.
+- HTTP 429 indicates that a rate or quota limit may have been reached. Check the project's model-specific limits and usage in [Google AI Studio](https://aistudio.google.com/).
+- Avoid repeatedly triggering the same AI workflow while a previous request is still running.
 
-### Step 5: Ollama Setup
+## 10. Optional Ollama Configuration
 
-Install and start Ollama.
+Gemini is the primary provider in the current SkillBridge setup. Ollama is optional and should only be used when deliberately selecting it.
 
-Pull the models used by the project:
+To use Ollama instead, install and start Ollama, pull the model(s) configured by the application, and set the provider in the backend environment:
 
-```bash
-ollama pull llama3.2:3b
-ollama pull llama3.2:1b
+```env
+LLM_PROVIDER=ollama
+OLLAMA_MODEL=llama3.2:3b
+OLLAMA_FAST_MODEL=llama3.2:1b
 ```
 
-Ensure Ollama is running and accessible to the backend.
+When using Gemini, keep `LLM_PROVIDER=gemini`; Ollama does not need to be running.
 
-*Model selection and availability depend on the application's current configuration.*
+## 11. Testing
 
-## 9. Running the Application
+Run the available backend tests from the backend directory with the virtual environment activated:
 
-Start the required services:
-
-1. Start MongoDB.
-2. Start Ollama.
-3. Start the FastAPI backend.
-4. Start the React frontend.
-
-Open the frontend in a browser and use the resume upload and career guidance workflows.
-
-## 10. Testing
-
-The backend includes automated tests for selected application workflows.
-
-Run the available backend tests from the backend directory:
-
-```bash
+```powershell
 python -m pytest -q
 ```
 
 Testing should cover the relevant areas, including:
 
 - API request and response handling.
+- Registration, login, and email OTP behavior.
 - Resume processing.
-- Role prediction.
-- Skill gap analysis.
-- Roadmap generation.
+- Role prediction and Role Search.
+- Skill gap analysis and target benchmark display.
+- Roadmap generation and course discovery.
 - Progress-related functionality.
 
-Test results depend on the current test environment and configured services.
+Live Gemini and SMTP tests require valid local environment configuration and may consume API quota or send real email messages. Run those tests deliberately.
 
-## 11. Security and Data Handling
+## 12. Security and Data Handling
 
-The application processes personal information contained in uploaded resumes.
+The application processes personal information contained in uploaded resumes and uses external services for selected AI and email workflows.
 
-Important considerations include:
-
-- Protecting uploaded resume information.
-- Keeping database credentials and API configuration in environment variables.
-- Avoiding exposure of sensitive information in application logs.
-- Validating uploaded files and API inputs.
-- Applying appropriate authentication and authorization checks.
-- Restricting access to user-specific career information.
+- Keep API keys, SMTP credentials, database credentials, and JWT secrets in `backend/.env` or another secure secret store.
+- Never commit `.env` files or real credentials to GitHub.
+- Keep `.env.example` limited to placeholder values.
+- Confirm that `backend/.env` is ignored by Git before committing changes.
+- Do not share Gemini API keys or Gmail App Passwords in screenshots, chat messages, source code, or issue trackers.
+- Never ask users to provide their personal Gmail passwords. Users create a separate SkillBridge password.
+- Protect uploaded resume information and user-specific career data.
+- Validate uploaded files and API inputs and apply appropriate authentication and authorization checks.
+- Review logging to avoid exposing personal information or secrets.
 
 The application should be reviewed and security-tested before production deployment.
 
-## 12. Project Advantages
+## 13. Project Advantages
 
 - **AI-Based Career Guidance:** Helps users explore suitable career opportunities.
 - **Personalized Skill Analysis:** Identifies the difference between existing and required skills.
 - **Structured Learning Path:** Provides a roadmap for improving professional competencies.
 - **Integrated Learning Resources:** Connects skill gaps with relevant courses.
 - **Modular Architecture:** Separates frontend, backend, resume processing, and AI services.
-- **Local LLM Support:** Uses Ollama-based inference for supported AI workflows.
+- **Centralized LLM Configuration:** Routes supported AI workflows through a common provider interface.
 
-## 13. Current Project Scope
+## 14. Current Project Scope
 
 SkillBridge integrates the following major workflows:
 
-1. Resume Upload and Parsing
-2. AI-Based Role Prediction
-3. Skill Gap Analysis
-4. Personalized Roadmap Generation
-5. Course Recommendations
-6. Learning Progress Tracking
+1. User Registration, Login, and Email OTP Verification.
+2. Resume Upload and Parsing.
+3. AI-Based Role Prediction.
+4. Natural-language Role Search.
+5. Skill Gap Analysis and Target Benchmark.
+6. Personalized Roadmap Generation.
+7. Course Discovery and Recommendations.
+8. Learning Progress Tracking.
 
-## 14. Future Enhancements
+## 15. Future Enhancements
 
 Potential enhancements include:
 
 - Improved resume parsing for complex layouts.
 - Expanded role and skills coverage.
-- More comprehensive course recommendations.
+- More comprehensive and consistently verified course recommendations.
 - Enhanced learning progress analytics.
 - Additional AI-assisted career guidance features.
-- Performance and deployment improvements.
+- Performance, rate-limit, and deployment improvements.
 
-## 15. Repository
+## 16. Repository
 
 **GitHub:** https://github.com/Padmapv28/skill_bridge
 
 ---
 
-**SkillBridge – Bridging the Gap Between Skills and Career Opportunities.**
+**SkillBridge – Bridging the Gap Between Skills and Career**
