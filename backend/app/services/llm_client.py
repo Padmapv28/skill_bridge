@@ -14,6 +14,25 @@ GEMINI_API_URL = (
 
 _gemini_lock = threading.Lock()
 
+# Keep Gemini requests below the Free-tier RPM limit.
+_GEMINI_MIN_REQUEST_INTERVAL_SECONDS = 16.0
+_last_gemini_request_at = 0.0
+
+
+def _wait_for_gemini_request_slot() -> None:
+    """Space Gemini requests to reduce RPM quota errors."""
+    global _last_gemini_request_at
+
+    elapsed = time.monotonic() - _last_gemini_request_at
+    remaining = _GEMINI_MIN_REQUEST_INTERVAL_SECONDS - elapsed
+
+    if remaining > 0:
+        print(
+            f"[Gemini] Request pacing: waiting {remaining:.1f} seconds."
+        )
+        time.sleep(remaining)
+
+    _last_gemini_request_at = time.monotonic()
 
 def get_provider():
     return os.getenv("LLM_PROVIDER", "gemini").strip().lower()
@@ -109,6 +128,8 @@ def _generate_with_gemini(
 
         for attempt in range(3):
             try:
+                _wait_for_gemini_request_slot()
+
                 response = requests.post(
                     url,
                     params={"key": api_key},
@@ -124,12 +145,104 @@ def _generate_with_gemini(
                         f"(HTTP {response.status_code})."
                     )
 
+                    retry_delay = None
+
+                    if response.status_code == 429:
+                        error_text = response.text.lower()
+
+                        # Daily quota cannot be fixed by short retries.
+                        if any(
+                            marker in error_text
+                            for marker in (
+                                "perday",
+                                "per_day",
+                                "per day",
+                            )
+                        ):
+                            raise RuntimeError(
+                                "Gemini daily request quota appears "
+                                "exhausted. Wait for the quota reset. "
+                                f"Details: {response.text[:500]}"
+                            )
+
+                        # Respect Retry-After when provided.
+                        retry_after = response.headers.get(
+                            "Retry-After"
+                        )
+
+                        if retry_after:
+                            try:
+                                retry_delay = max(
+                                    0.0, float(retry_after)
+                                )
+                            except ValueError:
+                                pass
+
+                        # Otherwise, check Google's RetryInfo.
+                        if retry_delay is None:
+                            try:
+                                error_payload = response.json()
+                            except ValueError:
+                                error_payload = {}
+
+                            error_info = error_payload.get(
+                                "error", {}
+                            )
+                            details = (
+                                error_info.get("details", [])
+                                if isinstance(error_info, dict)
+                                else []
+                            )
+
+                            for detail in details:
+                                if (
+                                    isinstance(detail, dict)
+                                    and str(
+                                        detail.get("@type", "")
+                                    ).endswith("RetryInfo")
+                                ):
+                                    raw_delay = str(
+                                        detail.get("retryDelay", "")
+                                    ).strip().lower()
+
+                                    if raw_delay.endswith("s"):
+                                        try:
+                                            retry_delay = max(
+                                                0.0,
+                                                float(raw_delay[:-1]),
+                                            )
+                                        except ValueError:
+                                            pass
+                                    break
+
+                    if retry_delay is None:
+                        retry_delay = min(
+                            60.0, 2.0 ** (attempt + 1)
+                        )
+
+                    if attempt < 2:
+                        print(
+                            f"[Gemini] {message} "
+                            f"Retry {attempt + 1}/2 "
+                            f"in {retry_delay:.1f}s."
+                        )
+                        time.sleep(retry_delay)
+                        continue
+
+                    raise RuntimeError(
+                        f"{message} Details: {response.text[:500]}"
+                    )
+                    message = (
+                        f"Gemini temporarily unavailable "
+                        f"(HTTP {response.status_code})."
+                    )
+
                     if attempt < 2:
                         print(
                             f"[Gemini] {message} "
                             f"Retry {attempt + 1}/2."
                         )
-                        time.sleep(2 ** attempt)
+                        time.sleep(min(60.0, 2.0 ** (attempt + 1)))
                         continue
 
                     raise RuntimeError(message)
@@ -145,7 +258,7 @@ def _generate_with_gemini(
 
             except requests.exceptions.Timeout as exc:
                 if attempt < 2:
-                    time.sleep(2 ** attempt)
+                    time.sleep(min(60.0, 2.0 ** (attempt + 1)))
                     continue
 
                 raise RuntimeError(
@@ -154,7 +267,7 @@ def _generate_with_gemini(
 
             except requests.exceptions.RequestException as exc:
                 if attempt < 2:
-                    time.sleep(2 ** attempt)
+                    time.sleep(min(60.0, 2.0 ** (attempt + 1)))
                     continue
 
                 raise RuntimeError(
